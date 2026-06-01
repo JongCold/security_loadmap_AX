@@ -11,15 +11,23 @@
 // 환경 설정 (Vercel 배포 시 이 값을 변경)
 // ====================================================================
 const CONFIG = {
-    // 백엔드 API 서버 URL (로컬 Flask 서버 구동 시 주소)
-    // Vercel 배포 시에는 백엔드가 없으므로, 빈 문자열로 두면 데모 모드가 자동 활성화됩니다.
+    // 백엔드 API 서버 URL
+    // - 빈 문자열(''): 자동 감지 모드 (로컬호스트 → Flask 5000 시도 → 실패 시 데모 모드)
+    // - 'http://localhost:5000': 직접 지정 모드
+    // - Vercel 외부 배포 시: 빈 문자열로 두면 외부 도메인에서 자동 데모 모드
     API_BASE_URL: '',
     
     // 데모 모드 강제 활성화 (true: 항상 데모 모드, false: API 연결 시도 후 실패하면 데모 모드)
     FORCE_DEMO_MODE: false,
 
     // 백엔드 연결 확인 타임아웃 (ms)
-    HEALTH_CHECK_TIMEOUT: 3000
+    HEALTH_CHECK_TIMEOUT: 3000,
+
+    // 자동 감지 시 로컬 Flask 서버 후보 URL 목록
+    LOCAL_BACKEND_CANDIDATES: [
+        'http://localhost:5000',
+        'http://127.0.0.1:5000'
+    ]
 };
 
 // ====================================================================
@@ -151,6 +159,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     if (isDemoMode) {
         activateDemoMode();
+    } else {
+        console.log(`[시스템] ✅ 백엔드 연결 성공! API_BASE_URL: ${CONFIG.API_BASE_URL}`);
     }
 
     // 2. DOM 요소 바인딩
@@ -159,24 +169,57 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 /**
  * 백엔드 API 서버 연결 여부를 확인하여 데모 모드 사용 여부를 결정
+ * 
+ * 동작 흐름:
+ * 1. FORCE_DEMO_MODE가 true이면 → 즉시 데모 모드
+ * 2. API_BASE_URL이 명시적으로 지정되어 있으면 → 해당 URL로 헬스체크
+ * 3. API_BASE_URL이 비어있으면 → 로컬 Flask 서버 후보 URL들을 순차 탐색
+ *    - localhost:5000, 127.0.0.1:5000 순서로 시도
+ *    - 하나라도 연결 성공하면 실제 모드로 전환
+ *    - 모두 실패하면 데모 모드 (Vercel 외부 배포 환경)
  */
 async function checkDemoMode() {
     if (CONFIG.FORCE_DEMO_MODE) return true;
-    if (!CONFIG.API_BASE_URL) return true;
 
+    // API_BASE_URL이 명시적으로 지정된 경우 → 해당 URL만 확인
+    if (CONFIG.API_BASE_URL) {
+        return !(await tryConnectBackend(CONFIG.API_BASE_URL));
+    }
+
+    // API_BASE_URL이 비어있는 경우 → 로컬 Flask 서버 자동 탐색
+    console.log('[시스템] API_BASE_URL 미설정 — 로컬 Flask 서버 자동 탐색 시작...');
+    
+    for (const candidateUrl of CONFIG.LOCAL_BACKEND_CANDIDATES) {
+        console.log(`[시스템] 🔍 ${candidateUrl} 연결 시도...`);
+        const connected = await tryConnectBackend(candidateUrl);
+        if (connected) {
+            CONFIG.API_BASE_URL = candidateUrl;
+            console.log(`[시스템] ✅ 백엔드 발견! API_BASE_URL = ${candidateUrl}`);
+            return false; // 데모 모드 비활성화 (실제 모드)
+        }
+    }
+
+    // 모든 후보 연결 실패 → 데모 모드 (Vercel 외부 배포 환경)
+    console.warn('[시스템] 로컬 Flask 서버를 찾을 수 없습니다. 데모 모드로 전환합니다.');
+    return true;
+}
+
+/**
+ * 지정된 백엔드 URL에 헬스체크를 시도하여 연결 가능 여부를 반환
+ */
+async function tryConnectBackend(baseUrl) {
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), CONFIG.HEALTH_CHECK_TIMEOUT);
         
-        const response = await fetch(`${CONFIG.API_BASE_URL}/api/rag/status`, {
+        const response = await fetch(`${baseUrl}/api/rag/status`, {
             signal: controller.signal
         });
         clearTimeout(timeoutId);
         
-        return !response.ok;
+        return response.ok;
     } catch (e) {
-        console.warn('[시스템] 백엔드 연결 실패, 데모 모드로 전환합니다.', e.message);
-        return true;
+        return false;
     }
 }
 
