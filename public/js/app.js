@@ -1,244 +1,164 @@
 /**
  * Security Roadmap Agent - Vercel 배포용 프론트엔드 스크립트
  * 
- * 주요 변경점:
- * 1. API_BASE_URL 동적 설정 (로컬 / 원격 백엔드 전환 가능)
- * 2. 데모 모드 (DEMO_MODE): 백엔드 연결 불가 시 목업 데이터로 UI 시연
- * 3. Flask 경로 의존성 제거 (순수 정적 사이트 호환)
+ * 변경점:
+ * 1. 데모 모드(목업 데이터) 제거 - 실 운영 전용
+ * 2. API_BASE_URL 수동 설정 및 로컬스토리지 저장 기능 구현
+ * 3. Mixed Content 방지 안내 및 연결성 탐지 고도화
  */
 
-// ====================================================================
-// 환경 설정 (Vercel 배포 시 이 값을 변경)
-// ====================================================================
 const CONFIG = {
-    // 백엔드 API 서버 URL
-    // - 빈 문자열(''): 자동 감지 모드 (로컬호스트 → Flask 5000 시도 → 실패 시 데모 모드)
-    // - 'http://localhost:5000': 직접 지정 모드
-    // - Vercel 외부 배포 시: 빈 문자열로 두면 외부 도메인에서 자동 데모 모드
-    API_BASE_URL: '',
-    
-    // 데모 모드 강제 활성화 (true: 항상 데모 모드, false: API 연결 시도 후 실패하면 데모 모드)
-    FORCE_DEMO_MODE: false,
-
-    // 백엔드 연결 확인 타임아웃 (ms)
+    DEFAULT_API_BASE_URL: 'http://localhost:5000',
     HEALTH_CHECK_TIMEOUT: 3000,
-
-    // 자동 감지 시 로컬 Flask 서버 후보 URL 목록
     LOCAL_BACKEND_CANDIDATES: [
         'http://localhost:5000',
         'http://127.0.0.1:5000'
     ]
 };
 
-// ====================================================================
-// 데모 모드 목업 데이터 (보안 민감 정보 마스킹 처리)
-// ====================================================================
-const DEMO_DATA = {
-    company: 'DEMO 기업',
-    items: [
-        {
-            row_idx: 1,
-            "항목명": "접근통제 정책",
-            "세부점검내용": "정보시스템에 대한 접근 권한 관리 정책 수립 여부",
-            "운영현황_증적": "현재 접근통제 정책이 문서화되어 있지 않으며, 시스템별 권한 관리가 개별적으로 운영되고 있음. 퇴직자 계정 회수 절차가 미흡하여 일부 비활성 계정이 존재함.",
-            "개선방안": "통합 접근통제 정책을 수립하고, 계정 라이프사이클 관리 체계를 도입하여 입사/퇴사/이동 시 권한이 자동으로 변경되도록 IAM 솔루션 도입이 필요함.",
-            "보안영역": "접근통제",
-            "과제명": "통합 계정 및 접근 관리 체계 구축",
-            "법적요구": "개인정보보호법 제29조",
-            "시급성": 5,
-            "위험도": 4,
-            "예상예산": "5,000만원 ~ 8,000만원",
-            "로드맵연도": "2026년",
-            "비고": "",
-            "추천솔루션": "SafeNet Trusted Access",
-            "제조사": "Thales"
-        },
-        {
-            row_idx: 2,
-            "항목명": "네트워크 보안",
-            "세부점검내용": "방화벽 정책 관리 및 침입 탐지/방지 시스템 운영 여부",
-            "운영현황_증적": "기존 방화벽 장비의 노후화로 최신 위협 대응 능력이 부족함. IPS/IDS 장비가 미도입되어 외부 침입 탐지 기능이 없는 상태.",
-            "개선방안": "차세대 방화벽(NGFW)으로 교체하고, 네트워크 IPS 장비를 도입하여 실시간 침입 탐지 및 차단 체계를 구축해야 함.",
-            "보안영역": "네트워크 보안",
-            "과제명": "차세대 방화벽 및 IPS 도입",
-            "법적요구": "정보통신망법 제45조",
-            "시급성": 5,
-            "위험도": 5,
-            "예상예산": "1억원 ~ 1.5억원",
-            "로드맵연도": "2026년",
-            "비고": "",
-            "추천솔루션": "TrusGuard",
-            "제조사": "AhnLab"
-        },
-        {
-            row_idx: 3,
-            "항목명": "데이터 암호화",
-            "세부점검내용": "개인정보 및 민감 데이터의 암호화 조치 이행 여부",
-            "운영현황_증적": "DB 내 개인정보(주민번호, 카드번호 등)에 대한 암호화가 일부 누락되어 있으며, 암호화 키 관리 정책이 부재함.",
-            "개선방안": "DB 암호화 솔루션을 도입하여 개인정보 필드를 전체 암호화하고, 별도의 키 관리 서버(KMS)를 구축하여 암호화 키 생명주기를 체계적으로 관리.",
-            "보안영역": "데이터 보호",
-            "과제명": "DB 암호화 및 키 관리 체계 구축",
-            "법적요구": "개인정보보호법 제24조의2",
-            "시급성": 4,
-            "위험도": 4,
-            "예상예산": "3,000만원 ~ 5,000만원",
-            "로드맵연도": "2026년",
-            "비고": "",
-            "추천솔루션": "D'Amo",
-            "제조사": "펜타시큐리티"
-        },
-        {
-            row_idx: 4,
-            "항목명": "보안 관제",
-            "세부점검내용": "보안 이벤트 통합 모니터링 및 관제 체계 운영 여부",
-            "운영현황_증적": "현재 보안 장비별 개별 로그 관리만 수행하고 있으며, 통합 보안 관제 체계가 부재하여 이상 징후 실시간 탐지가 불가능한 상태.",
-            "개선방안": "SIEM 솔루션을 도입하여 전사 보안 로그를 통합 수집·분석하고, 24×7 보안 관제 체계를 구축하여 이상 징후를 실시간으로 탐지·대응.",
-            "보안영역": "보안 관제",
-            "과제명": "SIEM 기반 통합 보안 관제 구축",
-            "법적요구": "N/A",
-            "시급성": 3,
-            "위험도": 3,
-            "예상예산": "8,000만원 ~ 1.2억원",
-            "로드맵연도": "2027년",
-            "비고": "",
-            "추천솔루션": "ArcSight",
-            "제조사": "Micro Focus"
-        },
-        {
-            row_idx: 5,
-            "항목명": "엔드포인트 보안",
-            "세부점검내용": "업무용 PC 및 모바일 단말의 악성코드 방지 및 매체 제어 여부",
-            "운영현황_증적": "사내 PC에 백신 소프트웨어가 설치되어 있으나, 패턴 업데이트 주기가 불규칙하며, USB 등 이동식 매체에 대한 통제가 이루어지지 않고 있음.",
-            "개선방안": "EDR(Endpoint Detection & Response) 솔루션을 도입하여 지능형 위협에 대한 실시간 탐지·대응 체계를 구축하고, 매체 제어(DLP) 기능도 병행 적용.",
-            "보안영역": "엔드포인트 보안",
-            "과제명": "EDR 및 매체 제어 솔루션 도입",
-            "법적요구": "N/A",
-            "시급성": 3,
-            "위험도": 3,
-            "예상예산": "2,000만원 ~ 4,000만원",
-            "로드맵연도": "2027년",
-            "비고": "",
-            "추천솔루션": "V3 Endpoint Security",
-            "제조사": "AhnLab"
-        },
-        {
-            row_idx: 6,
-            "항목명": "취약점 관리",
-            "세부점검내용": "주기적 보안 취약점 점검 및 패치 관리 체계 운영 여부",
-            "운영현황_증적": "서버 및 네트워크 장비에 대한 취약점 점검이 연 1회만 수행되고 있으며, 점검 결과에 대한 조치 이력 관리가 미비함.",
-            "개선방안": "취약점 스캐너를 도입하여 분기별 자동 점검을 수행하고, 패치 관리 시스템과 연동하여 조치 추적 관리 체계를 마련.",
-            "보안영역": "취약점 관리",
-            "과제명": "자동화 취약점 스캐닝 및 패치 관리",
-            "법적요구": "N/A",
-            "시급성": 2,
-            "위험도": 2,
-            "예상예산": "1,500만원 ~ 3,000만원",
-            "로드맵연도": "2028년",
-            "비고": "",
-            "추천솔루션": "Nessus Professional",
-            "제조사": "Tenable"
-        }
-    ]
-};
-
-// ====================================================================
 // 전역 상태 변수
-// ====================================================================
-let isDemoMode = false;
+let currentApiBaseUrl = '';
+let isConnected = false;
 let uploadedData = null;
 let mappedResults = null;
 let envFilepath = null;
 let assetFilepath = null;
 
 // ====================================================================
-// 초기화 로직
+// 초기화 및 연결 탐지 로직
 // ====================================================================
 document.addEventListener('DOMContentLoaded', async () => {
-    // 1. 백엔드 연결 확인 → 데모 모드 결정
-    isDemoMode = await checkDemoMode();
-    
-    if (isDemoMode) {
-        activateDemoMode();
+    // 1. API 주소 초기값 설정 (로컬 스토리지 -> 기본값 순)
+    const savedUrl = localStorage.getItem('SECURITY_AGENT_API_URL');
+    if (savedUrl) {
+        currentApiBaseUrl = savedUrl;
     } else {
-        console.log(`[시스템] ✅ 백엔드 연결 성공! API_BASE_URL: ${CONFIG.API_BASE_URL}`);
+        // 지정된 주소가 없으면 로컬 후보들 중 동작하는 것을 자동 검색
+        currentApiBaseUrl = await autoDetectBackend() || CONFIG.DEFAULT_API_BASE_URL;
     }
 
-    // 2. DOM 요소 바인딩
+    // UI 요소 바인딩 및 이벤트 초기화
     initializeUI();
+
+    // 연결 시도 및 UI 동기화
+    await checkAndApplyConnection(currentApiBaseUrl);
 });
 
 /**
- * 백엔드 API 서버 연결 여부를 확인하여 데모 모드 사용 여부를 결정
- * 
- * 동작 흐름:
- * 1. FORCE_DEMO_MODE가 true이면 → 즉시 데모 모드
- * 2. API_BASE_URL이 명시적으로 지정되어 있으면 → 해당 URL로 헬스체크
- * 3. API_BASE_URL이 비어있으면 → 로컬 Flask 서버 후보 URL들을 순차 탐색
- *    - localhost:5000, 127.0.0.1:5000 순서로 시도
- *    - 하나라도 연결 성공하면 실제 모드로 전환
- *    - 모두 실패하면 데모 모드 (Vercel 외부 배포 환경)
+ * 로컬 Flask 후보 서버 자동 탐색
  */
-async function checkDemoMode() {
-    if (CONFIG.FORCE_DEMO_MODE) return true;
-
-    // API_BASE_URL이 명시적으로 지정된 경우 → 해당 URL만 확인
-    if (CONFIG.API_BASE_URL) {
-        return !(await tryConnectBackend(CONFIG.API_BASE_URL));
-    }
-
-    // API_BASE_URL이 비어있는 경우 → 로컬 Flask 서버 자동 탐색
-    console.log('[시스템] API_BASE_URL 미설정 — 로컬 Flask 서버 자동 탐색 시작...');
-    
+async function autoDetectBackend() {
+    console.log('[시스템] API_BASE_URL 미지정 — 로컬 Flask 서버 후보 탐색 시작...');
     for (const candidateUrl of CONFIG.LOCAL_BACKEND_CANDIDATES) {
-        console.log(`[시스템] 🔍 ${candidateUrl} 연결 시도...`);
         const connected = await tryConnectBackend(candidateUrl);
         if (connected) {
-            CONFIG.API_BASE_URL = candidateUrl;
-            console.log(`[시스템] ✅ 백엔드 발견! API_BASE_URL = ${candidateUrl}`);
-            return false; // 데모 모드 비활성화 (실제 모드)
+            console.log(`[시스템] 자동 감지 성공: ${candidateUrl}`);
+            return candidateUrl;
         }
     }
-
-    // 모든 후보 연결 실패 → 데모 모드 (Vercel 외부 배포 환경)
-    console.warn('[시스템] 로컬 Flask 서버를 찾을 수 없습니다. 데모 모드로 전환합니다.');
-    return true;
+    return null;
 }
 
 /**
- * 지정된 백엔드 URL에 헬스체크를 시도하여 연결 가능 여부를 반환
+ * 지정된 백엔드 URL에 헬스체크를 시도
  */
 async function tryConnectBackend(baseUrl) {
+    if (!baseUrl) return false;
+    // URL 끝에 / 가 있으면 제거하여 통일
+    const formattedUrl = baseUrl.replace(/\/+$/, "");
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), CONFIG.HEALTH_CHECK_TIMEOUT);
         
-        const response = await fetch(`${baseUrl}/api/rag/status`, {
+        const response = await fetch(`${formattedUrl}/api/rag/status`, {
             signal: controller.signal
         });
         clearTimeout(timeoutId);
         
         return response.ok;
     } catch (e) {
+        console.warn(`[시스템] 연결 실패 (${formattedUrl}):`, e.message);
         return false;
     }
 }
 
 /**
- * 데모 모드를 활성화하고 UI에 표시
+ * 연결 상태 체크 및 UI 업데이트 적용
  */
-function activateDemoMode() {
-    const banner = document.getElementById('demo-mode-banner');
-    if (banner) {
-        banner.style.display = 'inline-flex';
+async function checkAndApplyConnection(targetUrl) {
+    const formattedUrl = targetUrl.replace(/\/+$/, "");
+    const statusBadge = document.getElementById('connection-status-badge');
+    const errorGuide = document.getElementById('connection-error-guide');
+    const urlInput = document.getElementById('api-url-input');
+    
+    if (urlInput) {
+        urlInput.value = formattedUrl;
     }
-    console.log('[시스템] 🧪 데모 모드 활성화됨 — 목업 데이터로 UI 시연 중');
+
+    // 헬스체크 시도
+    isConnected = await tryConnectBackend(formattedUrl);
+    
+    if (isConnected) {
+        currentApiBaseUrl = formattedUrl;
+        localStorage.setItem('SECURITY_AGENT_API_URL', formattedUrl);
+        
+        // 연결 성공 UI
+        if (statusBadge) {
+            statusBadge.className = 'table-badge badge-green';
+            statusBadge.innerHTML = `<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--accent-green);"></span> 연결 완료`;
+        }
+        if (errorGuide) {
+            errorGuide.style.display = 'none'; // 경고창 숨김
+        }
+        console.log(`[시스템] 백엔드 서버 연동 성공! URL: ${currentApiBaseUrl}`);
+        toggleInputs(false); // 입력 활성화
+    } else {
+        // 연결 실패 UI
+        if (statusBadge) {
+            statusBadge.className = 'table-badge badge-red';
+            statusBadge.innerHTML = `<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--accent-red);"></span> 연결 끊김`;
+        }
+        if (errorGuide) {
+            errorGuide.style.display = 'block'; // 경고창 노출
+        }
+        console.warn(`[시스템] 백엔드 서버에 연결할 수 없습니다. URL: ${formattedUrl}`);
+        toggleInputs(true); // 입력 비활성화
+    }
 }
 
 /**
- * API 호출 래퍼 함수 (데모 모드 시 목업 반환)
+ * 서버 미연결 상태일 때 관련 컨트롤 비활성화 처리
+ */
+function toggleInputs(disabled) {
+    const fileInputs = ['file-input', 'file-input-env', 'file-input-asset'];
+    fileInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = disabled;
+    });
+
+    const dropzones = ['dropzone', 'dropzone-env', 'dropzone-asset'];
+    dropzones.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            if (disabled) {
+                el.style.opacity = '0.5';
+                el.style.pointerEvents = 'none';
+            } else {
+                el.style.opacity = '1';
+                el.style.pointerEvents = 'auto';
+            }
+        }
+    });
+
+    const btnMapStart = document.getElementById('btn-map-start');
+    if (btnMapStart) btnMapStart.disabled = disabled;
+}
+
+/**
+ * API 호출용 URL 래퍼
  */
 function apiUrl(path) {
-    return `${CONFIG.API_BASE_URL}${path}`;
+    return `${currentApiBaseUrl}${path}`;
 }
 
 // ====================================================================
@@ -268,16 +188,37 @@ function initializeUI() {
     const btnExport = document.getElementById('btn-export');
     const modelSelect = document.getElementById('model-select');
 
+    // 백엔드 연결 제어 관련 바인딩
+    const btnConnectBackend = document.getElementById('btn-connect-backend');
+    const apiUrlInput = document.getElementById('api-url-input');
+
+    if (btnConnectBackend && apiUrlInput) {
+        btnConnectBackend.addEventListener('click', async () => {
+            const targetUrl = apiUrlInput.value.trim();
+            if (!targetUrl) {
+                alert('연결할 백엔드 API 서버 URL을 입력해주세요.');
+                return;
+            }
+            btnConnectBackend.disabled = true;
+            btnConnectBackend.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 연결 중...`;
+            await checkAndApplyConnection(targetUrl);
+            btnConnectBackend.disabled = false;
+            btnConnectBackend.innerHTML = `<i class="fa-solid fa-circle-check"></i> 연결하기`;
+        });
+    }
+
     // 1. 드롭존 클릭 시 파일 브라우저 열기
-    dropzone.addEventListener('click', () => fileInput.click());
+    if (dropzone) dropzone.addEventListener('click', () => fileInput.click());
     if (dropzoneEnv) dropzoneEnv.addEventListener('click', () => fileInputEnv.click());
     if (dropzoneAsset) dropzoneAsset.addEventListener('click', () => fileInputAsset.click());
 
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            handleFileUpload(e.target.files[0]);
-        }
-    });
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+    }
     if (fileInputEnv) {
         fileInputEnv.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
@@ -325,15 +266,8 @@ function initializeUI() {
             return;
         }
 
-        if (isDemoMode) {
-            // 데모 모드: 목업 데이터로 즉시 렌더링
-            fileInfo.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${file.name} (데모 모드 — 목업 데이터 로드됨)`;
-            uploadedData = { company: DEMO_DATA.company, items: DEMO_DATA.items };
-            companyNameBadge.textContent = DEMO_DATA.company;
-            uploadActions.style.display = 'block';
-            mappedResults = DEMO_DATA.items;
-            renderResultTable(DEMO_DATA.items);
-            resultCard.style.display = 'block';
+        if (!isConnected) {
+            alert('백엔드 서버와 연결이 끊어진 상태입니다. 연결 상태를 확인하십시오.');
             return;
         }
 
@@ -379,8 +313,8 @@ function initializeUI() {
             return;
         }
 
-        if (isDemoMode) {
-            fileInfoEnv.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${file.name} (데모 모드)`;
+        if (!isConnected) {
+            alert('백엔드 서버와 연결이 끊어진 상태입니다.');
             return;
         }
 
@@ -426,8 +360,8 @@ function initializeUI() {
             return;
         }
 
-        if (isDemoMode) {
-            fileInfoAsset.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${file.name} (데모 모드)`;
+        if (!isConnected) {
+            alert('백엔드 서버와 연결이 끊어진 상태입니다.');
             return;
         }
 
@@ -467,42 +401,8 @@ function initializeUI() {
             return;
         }
 
-        if (isDemoMode) {
-            // 데모 모드: 시뮬레이션 로딩 후 목업 결과 표시
-            btnMapStart.disabled = true;
-            btnMapStart.style.opacity = '0.6';
-            btnMapStart.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 데모 분석 처리 중...`;
-            loadingOverlay.style.display = 'block';
-            progressBar.style.width = '10%';
-            if (loadingText) {
-                loadingText.innerHTML = `<strong>[데모 모드]</strong> AI 매핑 시뮬레이션 진행 중...`;
-            }
-
-            let progress = 10;
-            const interval = setInterval(() => {
-                if (progress < 95) {
-                    progress += Math.floor(Math.random() * 20) + 10;
-                    if (progress > 95) progress = 95;
-                    progressBar.style.width = `${progress}%`;
-                }
-            }, 300);
-
-            setTimeout(() => {
-                clearInterval(interval);
-                progressBar.style.width = '100%';
-                
-                setTimeout(() => {
-                    loadingOverlay.style.display = 'none';
-                    btnMapStart.disabled = false;
-                    btnMapStart.style.opacity = '1';
-                    btnMapStart.innerHTML = `<i class="fa-solid fa-microchip"></i> AI 매핑 및 스케줄링 기동`;
-
-                    mappedResults = DEMO_DATA.items;
-                    renderResultTable(DEMO_DATA.items);
-                    resultCard.style.display = 'block';
-                    resultCard.scrollIntoView({ behavior: 'smooth' });
-                }, 400);
-            }, 2000);
+        if (!isConnected) {
+            alert('백엔드 서버 연동이 필요한 작업입니다.');
             return;
         }
 
@@ -704,8 +604,8 @@ function initializeUI() {
             return;
         }
 
-        if (isDemoMode) {
-            alert('📋 데모 모드에서는 엑셀 다운로드가 제공되지 않습니다.\n\n실제 엑셀 추출은 로컬 Flask 서버 환경에서만 가능합니다.\n\n실행 방법:\n1. python app.py\n2. http://localhost:5000 접속\n3. 진단 자료 업로드 후 AI 매핑 실행\n4. 최종 엑셀 로드맵 추출');
+        if (!isConnected) {
+            alert('서버 연결이 해제되어 엑셀 다운로드가 불가능합니다.');
             return;
         }
 
@@ -752,8 +652,8 @@ function initializeUI() {
     const btnClearUploads = document.getElementById('btn-clear-uploads');
     if (btnClearUploads) {
         btnClearUploads.addEventListener('click', () => {
-            if (isDemoMode) {
-                alert('📋 데모 모드에서는 서버 관리 기능이 제공되지 않습니다.');
+            if (!isConnected) {
+                alert('서버 연결이 필요합니다.');
                 return;
             }
             if (confirm('정말 업로드된 모든 임시 엑셀 파일들을 영구 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
@@ -799,8 +699,8 @@ function initializeUI() {
     const btnClearRag = document.getElementById('btn-clear-rag');
     if (btnClearRag) {
         btnClearRag.addEventListener('click', () => {
-            if (isDemoMode) {
-                alert('📋 데모 모드에서는 서버 관리 기능이 제공되지 않습니다.');
+            if (!isConnected) {
+                alert('서버 연결이 필요합니다.');
                 return;
             }
             if (confirm('⚠️ 경고: RAG 지식 베이스를 초기화하면 벡터 데이터베이스에 캐싱된 자사 솔루션의 청크 정보가 완전히 삭제됩니다.\n\n정말 초기화하시겠습니까?')) {
@@ -842,11 +742,11 @@ function initializeUI() {
             if (uploadsListPanel.style.display === 'none') {
                 uploadsListPanel.style.display = 'block';
                 btnViewUploads.innerHTML = `<i class="fa-solid fa-eye-slash"></i> 현황 닫기`;
-                if (isDemoMode) {
+                if (!isConnected) {
                     const tbody = document.getElementById('uploads-list-tbody');
                     const countText = document.getElementById('uploads-count-text');
-                    if (tbody) tbody.innerHTML = `<tr><td colspan="3" style="padding: 12px; text-align: center; color: #888;">📋 데모 모드: 서버 연결이 필요합니다.</td></tr>`;
-                    if (countText) countText.textContent = '데모 모드';
+                    if (tbody) tbody.innerHTML = `<tr><td colspan="3" style="padding: 12px; text-align: center; color: #888;">📋 서버 연결이 필요합니다.</td></tr>`;
+                    if (countText) countText.textContent = '연결 필요';
                 } else {
                     loadUploadsList();
                 }
@@ -907,11 +807,11 @@ function initializeUI() {
             if (ragListPanel.style.display === 'none') {
                 ragListPanel.style.display = 'block';
                 btnViewRag.innerHTML = `<i class="fa-solid fa-eye-slash"></i> 현황 닫기`;
-                if (isDemoMode) {
+                if (!isConnected) {
                     const tbody = document.getElementById('rag-list-tbody');
                     const badge = document.getElementById('rag-count-badge');
-                    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="padding: 12px; text-align: center; color: #888;">📋 데모 모드: 서버 연결이 필요합니다.</td></tr>`;
-                    if (badge) badge.textContent = '데모 모드';
+                    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="padding: 12px; text-align: center; color: #888;">📋 서버 연결이 필요합니다.</td></tr>`;
+                    if (badge) badge.textContent = '연결 필요';
                 } else {
                     loadRagList();
                 }
