@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>보안 로드맵 수립 에이전트 (AX 솔루션)</title>
+    <meta name="description" content="AX (AI Transformation) 기반 정보보안감사 보안 솔루션 로드맵 자동 수립 플랫폼. 로컬 sLLM과 RAG 기술을 활용한 오프라인 보안 컨설팅 자동화 시스템.">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Premium stylesheet link -->
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+    <!-- Background Aura Elements -->
+    <div class="aura aura-blue"></div>
+    <div class="aura aura-purple"></div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">
+                <i class="fa-solid fa-shield-halved glow-icon"></i>
+                <h1>Security Roadmap Agent</h1>
+            </div>
+            <p class="subtitle">AX (AI Transformation) 기반 보안 솔루션 로드맵 수립 플랫폼</p>
+            <!-- 데모 모드 배너 -->
+            <div id="demo-mode-banner" class="demo-banner" style="display: none;">
+                <i class="fa-solid fa-flask"></i>
+                <span>데모 모드 — 백엔드 미연결 상태에서 목업 데이터로 UI를 시연합니다.</span>
+            </div>
+        </header>
+
+        <!-- Main Card Section -->
+        <main class="main-content">
+            <!-- 1. Upload Card -->
+            <section class="card upload-card glass">
+                <h2><i class="fa-solid fa-cloud-arrow-up card-icon"></i>1. 진단 자료 업로드 및 AI 매핑 설정</h2>
+                <p class="card-desc">보안 솔루션 로드맵을 자동 수립하기 위해 3가지 엑셀 진단 자료를 업로드합니다.</p>
+                
+                <div class="upload-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 1rem; margin-bottom: 2rem;">
+                    <!-- 1. 내부보안점검 상세체크리스트 -->
+                    <div class="dropzone" id="dropzone" style="padding: 30px 15px; min-height: 170px;">
+                        <input type="file" id="file-input" accept=".xlsx" style="display: none;">
+                        <i class="fa-solid fa-file-invoice-dollar cloud-icon" style="font-size: 2.4rem; color: var(--accent-blue); margin-bottom: 8px;"></i>
+                        <p class="dropzone-text" style="font-size: 0.9rem; margin: 0;">상세체크리스트 <span>(필수)</span></p>
+                        <p class="file-info" id="file-info" style="font-size: 0.78rem; margin-top: 10px; word-break: break-all;"></p>
+                    </div>
+
+                    <!-- 2. 사전환경조사서 -->
+                    <div class="dropzone dropzone-purple" id="dropzone-env" style="padding: 30px 15px; min-height: 170px;">
+                        <input type="file" id="file-input-env" accept=".xlsx" style="display: none;">
+                        <i class="fa-solid fa-clipboard-question cloud-icon" style="font-size: 2.4rem; color: var(--accent-purple); margin-bottom: 8px;"></i>
+                        <p class="dropzone-text" style="font-size: 0.9rem; margin: 0;">사전환경조사서 <span>(선택)</span></p>
+                        <p class="file-info" id="file-info-env" style="font-size: 0.78rem; margin-top: 10px; color: var(--accent-purple); word-break: break-all;"></p>
+                    </div>
+
+                    <!-- 3. 자산목록 및 중요도 평가서 -->
+                    <div class="dropzone dropzone-red" id="dropzone-asset" style="padding: 30px 15px; min-height: 170px;">
+                        <input type="file" id="file-input-asset" accept=".xlsx" style="display: none;">
+                        <i class="fa-solid fa-boxes-stacked cloud-icon" style="font-size: 2.4rem; color: var(--accent-red); margin-bottom: 8px;"></i>
+                        <p class="dropzone-text" style="font-size: 0.9rem; margin: 0;">자산목록 평가서 <span>(선택)</span></p>
+                        <p class="file-info" id="file-info-asset" style="font-size: 0.78rem; margin-top: 10px; color: var(--accent-red); word-break: break-all;"></p>
+                    </div>
+                </div>
+
+                <div class="model-select-container">
+                    <label for="model-select"><i class="fa-solid fa-brain"></i> 분석 LLM 모델 선택:</label>
+                    <select id="model-select" class="model-select">
+                        <option value="gemma2:2b" selected>gemma2:2b (기본 추천)</option>
+                        <option value="llama3.2:3b">llama3.2:3b</option>
+                        <option value="gemma4:e4b">gemma4:e4b</option>
+                    </select>
+                </div>
+
+                <div class="action-bar" id="upload-actions" style="display: none;">
+                    <button class="btn btn-primary" id="btn-map-start">
+                        <i class="fa-solid fa-microchip"></i> AI 매핑 및 스케줄링 기동
+                    </button>
+                </div>
+            </section>
+            
+            <!-- 3. Storage and RAG Database Management (Premium Glassmorphism Card) -->
+            <section class="card management-card glass" style="margin-top: 2rem;">
+                <h2><i class="fa-solid fa-server card-icon"></i>3. 데이터 및 저장소 관리 제어 센터</h2>
+                <p class="card-desc">업로드 폴더 및 ChromaDB RAG 백엔드 지식 베이스를 직접 정리하고 관리할 수 있습니다.</p>
+                <div class="management-grid" style="display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem;">
+                    <div class="mgmt-item-container" style="background: rgba(255, 255, 255, 0.03); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); padding: 1rem;">
+                        <div class="mgmt-item" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                            <div class="mgmt-info" style="flex: 1;">
+                                <h3 style="font-size: 1.1rem; color: #fff; margin-bottom: 0.3rem;"><i class="fa-solid fa-folder-open" style="color: var(--accent-blue); margin-right: 0.5rem;"></i> 업로드 임시 파일 일괄 정리</h3>
+                                <p style="font-size: 0.85rem; color: #aaa; margin: 0;">서버 내 uploads 폴더에 캐싱되어 있는 임시 엑셀 파일들을 영구 삭제하여 디스크를 최적화합니다.</p>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button class="btn" id="btn-view-uploads" style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.1); padding: 10px 14px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                                    <i class="fa-solid fa-eye"></i> 현황 보기
+                                </button>
+                                <button class="btn btn-warning" id="btn-clear-uploads" style="background: linear-gradient(135deg, #f2994a, #f2c94c); color: #fff; border: none; padding: 10px 18px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                                    <i class="fa-solid fa-trash-can"></i> 임시 파일 일괄 비우기
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 업로드 파일 목록 표시 패널 -->
+                        <div class="mgmt-sub-panel" id="uploads-list-panel" style="margin-top: 1rem; padding: 1rem; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: none;">
+                            <h4 style="margin: 0 0 0.8rem 0; color: #fff; font-size: 0.95rem; display: flex; justify-content: space-between; align-items: center;">
+                                <span><i class="fa-solid fa-list-check" style="color: var(--accent-blue); margin-right: 6px;"></i> 보관 중인 임시 파일 목록</span>
+                                <span style="font-size: 0.8rem; color: #888;" id="uploads-count-text">0개 파일</span>
+                            </h4>
+                            <div style="max-height: 180px; overflow-y: auto; border-radius: 6px;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;">
+                                    <thead>
+                                        <tr style="border-bottom: 2px solid rgba(255,255,255,0.1); color: #ddd; background: rgba(255,255,255,0.02);">
+                                            <th style="padding: 8px;">파일명</th>
+                                            <th style="padding: 8px;">크기 (Bytes)</th>
+                                            <th style="padding: 8px;">업로드 일시</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="uploads-list-tbody" style="color: #bbb;">
+                                        <tr>
+                                            <td colspan="3" style="padding: 12px; text-align: center; color: #666;">데이터를 불러오는 중입니다...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mgmt-item-container" style="background: rgba(255, 255, 255, 0.03); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); padding: 1rem;">
+                        <div class="mgmt-item" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                            <div class="mgmt-info" style="flex: 1;">
+                                <h3 style="font-size: 1.1rem; color: #fff; margin-bottom: 0.3rem;"><i class="fa-solid fa-database" style="color: var(--accent-red); margin-right: 0.5rem;"></i> RAG 지식 베이스 초기화</h3>
+                                <p style="font-size: 0.85rem; color: #aaa; margin: 0;">ChromaDB 벡터 인덱스의 데이터를 초기화(삭제)합니다. 자사 보안 솔루션의 기밀 데이터를 지우거나 재매핑 시 사용합니다.</p>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button class="btn" id="btn-view-rag" style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.1); padding: 10px 14px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                                    <i class="fa-solid fa-eye"></i> 현황 보기
+                                </button>
+                                <button class="btn btn-danger" id="btn-clear-rag" style="background: linear-gradient(135deg, #eb5757, #00000000); color: #fff; border: 1px solid var(--accent-red); padding: 10px 18px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                                    <i class="fa-solid fa-dumpster-fire"></i> RAG 지식 베이스 초기화
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- RAG 데이터 목록 표시 패널 -->
+                        <div class="mgmt-sub-panel" id="rag-list-panel" style="margin-top: 1rem; padding: 1rem; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: none;">
+                            <h4 style="margin: 0 0 0.8rem 0; color: #fff; font-size: 0.95rem; display: flex; justify-content: space-between; align-items: center;">
+                                <span><i class="fa-solid fa-database" style="color: var(--accent-red); margin-right: 6px;"></i> RAG DB 구축 솔루션 현황</span>
+                                <span style="font-size: 0.85rem; color: var(--accent-blue); background: rgba(0,180,255,0.15); padding: 2px 8px; border-radius: 20px; font-weight: 600;" id="rag-count-badge">0건</span>
+                            </h4>
+                            <div style="max-height: 250px; overflow-y: auto; border-radius: 6px;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;">
+                                    <thead>
+                                        <tr style="border-bottom: 2px solid rgba(255,255,255,0.1); color: #ddd; background: rgba(255,255,255,0.02); position: sticky; top: 0;">
+                                            <th style="padding: 8px; width: 60px;">ID</th>
+                                            <th style="padding: 8px; width: 100px;">보안영역</th>
+                                            <th style="padding: 8px; width: 120px;">솔루션구분</th>
+                                            <th style="padding: 8px; width: 100px;">제조사</th>
+                                            <th style="padding: 8px; width: 120px;">제품명</th>
+                                            <th style="padding: 8px;">제품 기능 설명</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="rag-list-tbody" style="color: #bbb;">
+                                        <tr>
+                                            <td colspan="6" style="padding: 12px; text-align: center; color: #666;">데이터를 불러오는 중입니다...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Loading Indicator -->
+            <div class="loading-overlay" id="loading-overlay" style="display: none;">
+                <div class="spinner-container">
+                    <div class="spinner"></div>
+                    <p id="loading-text">로컬 Gemma 2 LLM 엔진 분석 및 자사 솔루션 RAG 탐색 중...</p>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Result Table Card -->
+            <section class="card result-card glass" id="result-card" style="display: none;">
+                <div class="card-header-flex">
+                    <h2><i class="fa-solid fa-chart-line card-icon"></i>2. 정보보안컨설팅 매핑 결과 종합 보고</h2>
+                    <button class="btn btn-success" id="btn-export">
+                        <i class="fa-solid fa-file-arrow-down"></i> 최종 엑셀 로드맵 추출
+                    </button>
+                </div>
+                <div class="company-badge-container">
+                    <span class="badge label-badge">대상 기업명</span>
+                    <span class="badge val-badge" id="company-name">DEMO 기업</span>
+                </div>
+
+                <div class="table-container">
+                    <table id="result-table">
+                        <thead>
+                            <tr>
+                                <th>No.</th>
+                                <th>점검 항목명</th>
+                                <th>운영 실태 및 결함 사항</th>
+                                <th>추천 보안 솔루션 (제조사)</th>
+                                <th>법적 요구사항</th>
+                                <th>시급성</th>
+                                <th>위험도</th>
+                                <th>예상 예산</th>
+                                <th>로드맵 연도</th>
+                                <th style="width: 110px;">액션</th>
+                            </tr>
+                        </thead>
+                        <tbody id="result-tbody">
+                            <!-- JS를 통해 동적 데이터 렌더링 -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>&copy; 2026 Security Roadmap Agent. Powered by Ollama Gemma 2 &amp; Flask Style-Cloner.</p>
+        </footer>
+    </div>
+
+    <!-- 팝업 모달 추가 (상세 전체보기) -->
+    <div class="modal" id="text-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-file-lines" style="color: var(--accent-blue);"></i> 운영 실태 및 결함 사항 전체보기</h3>
+                <button class="modal-close" id="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="section-title">점검 항목명</div>
+                <div class="text-block" id="modal-item-name" style="font-weight: 700; color: var(--accent-blue); padding: 8px 12px; font-size: 1rem; border-left: 3px solid var(--accent-blue);"></div>
+                
+                <div class="section-title">[현황] 운영 실태 및 증적</div>
+                <div class="text-block" id="modal-current-status"></div>
+                
+                <div class="section-title">[개선] 개선 방안</div>
+                <div class="text-block" id="modal-improvement" style="color: var(--accent-red); font-weight: 500; border-left: 3px solid var(--accent-red);"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS Scripts -->
+    <script src="./js/app.js"></script>
+</body>
+</html>
