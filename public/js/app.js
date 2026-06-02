@@ -8,9 +8,11 @@
  */
 
 const CONFIG = {
-    DEFAULT_API_BASE_URL: 'https://localhost:5000',
+    DEFAULT_API_BASE_URL: 'http://127.0.0.1:5000',
     HEALTH_CHECK_TIMEOUT: 3000,
     LOCAL_BACKEND_CANDIDATES: [
+        'http://localhost:5000',
+        'http://127.0.0.1:5000',
         'https://localhost:5000',
         'https://127.0.0.1:5000'
     ]

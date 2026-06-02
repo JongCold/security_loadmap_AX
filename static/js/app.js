@@ -1,13 +1,20 @@
 /**
- * Security Roadmap Agent - Flask 로컬 배포용 프론트엔드 스크립트 (동기화됨)
+ * Security Roadmap Agent - Vercel 배포용 프론트엔드 스크립트
+ * 
+ * 변경점:
+ * 1. 데모 모드(목업 데이터) 제거 - 실 운영 전용
+ * 2. API_BASE_URL 수동 설정 및 로컬스토리지 저장 기능 구현
+ * 3. Mixed Content 방지 안내 및 연결성 탐지 고도화
  */
 
 const CONFIG = {
-    DEFAULT_API_BASE_URL: 'https://127.0.0.1:5000',
+    DEFAULT_API_BASE_URL: 'http://127.0.0.1:5000',
     HEALTH_CHECK_TIMEOUT: 3000,
     LOCAL_BACKEND_CANDIDATES: [
-        'https://127.0.0.1:5000',
-        'https://localhost:5000'
+        'http://localhost:5000',
+        'http://127.0.0.1:5000',
+        'https://localhost:5000',
+        'https://127.0.0.1:5000'
     ]
 };
 
@@ -23,13 +30,13 @@ let assetFilepath = null;
 // 초기화 및 연결 탐지 로직
 // ====================================================================
 document.addEventListener('DOMContentLoaded', async () => {
-    // 1. API 주소 초기값 설정 (로컬 스토리지 -> 현재 접속중인 origin -> 기본값 순)
+    // 1. API 주소 초기값 설정 (로컬 스토리지 -> 기본값 순)
     const savedUrl = localStorage.getItem('SECURITY_AGENT_API_URL');
     if (savedUrl) {
         currentApiBaseUrl = savedUrl;
     } else {
-        // 현재 로컬 호스트 주소(origin)를 디폴트로 사용하도록 고도화
-        currentApiBaseUrl = window.location.origin || CONFIG.DEFAULT_API_BASE_URL;
+        // 지정된 주소가 없으면 로컬 후보들 중 동작하는 것을 자동 검색
+        currentApiBaseUrl = await autoDetectBackend() || CONFIG.DEFAULT_API_BASE_URL;
     }
 
     // UI 요소 바인딩 및 이벤트 초기화
@@ -59,6 +66,7 @@ async function autoDetectBackend() {
  */
 async function tryConnectBackend(baseUrl) {
     if (!baseUrl) return false;
+    // URL 끝에 / 가 있으면 제거하여 통일
     const formattedUrl = baseUrl.replace(/\/+$/, "");
     try {
         const controller = new AbortController();
@@ -400,6 +408,7 @@ function initializeUI() {
             return;
         }
 
+        // 실제 모드
         btnMapStart.disabled = true;
         btnMapStart.style.opacity = '0.6';
         btnMapStart.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 분석 처리 중...`;

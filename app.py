@@ -17,6 +17,21 @@ sys.stdout.reconfigure(encoding='utf-8', line_buffering=True)
 app = Flask(__name__)
 CORS(app)
 
+# Chrome의 Private Network Access (PNA) 규격 대응을 위한 WSGI 미들웨어
+class PNAMiddleware(object):
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        def custom_start_response(status, headers, exc_info=None):
+            # 기존 헤더 중 Access-Control-Allow-Private-Network 헤더 제거 후 'true' 단일값으로 강제 삽입
+            new_headers = [h for h in headers if h[0].lower() != 'access-control-allow-private-network']
+            new_headers.append(('Access-Control-Allow-Private-Network', 'true'))
+            return start_response(status, new_headers, exc_info)
+        return self.wsgi_app(environ, custom_start_response)
+
+app.wsgi_app = PNAMiddleware(app.wsgi_app)
+
 # 업로드 폴더 설정 - 상대 경로 지정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
@@ -491,6 +506,5 @@ def list_rag():
 
 
 if __name__ == '__main__':
-    print("Starting Flask server on https://localhost:5000 (with SSL adhoc context)", flush=True)
-    # Vercel(HTTPS)과의 브라우저 Mixed Content 보안 차단 우회를 위해 adhoc SSL 컨텍스트 사용
-    app.run(host='0.0.0.0', port=5000, ssl_context='adhoc', debug=False)
+    print("Starting Flask server on http://localhost:5000", flush=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)
