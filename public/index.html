@@ -38,7 +38,7 @@
                     </span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 280px; max-width: 600px;">
-                    <input type="text" id="api-url-input" class="edit-input" style="padding: 10px 14px; font-size: 0.9rem;" placeholder="http://localhost:5000">
+                    <input type="text" id="api-url-input" class="edit-input" style="padding: 10px 14px; font-size: 0.9rem;" placeholder="https://localhost:5000">
                     <button class="btn btn-primary" id="btn-connect-backend" style="padding: 10px 20px; font-size: 0.9rem; white-space: nowrap;">
                         <i class="fa-solid fa-circle-check"></i> 연결하기
                     </button>
@@ -47,14 +47,15 @@
             
             <!-- Connection Warning/Guide Message -->
             <div id="connection-error-guide" style="margin-top: 15px; padding: 15px; border-radius: 10px; background: rgba(255, 61, 0, 0.08); border: 1px solid rgba(255, 61, 0, 0.25); display: block;">
-                <h4 style="color: #ff8a65; font-size: 0.95rem; margin-bottom: 8px;"><i class="fa-solid fa-triangle-exclamation"></i> 브라우저 보안 및 HTTPS 혼합 콘텐츠(Mixed Content) 경고</h4>
+                <h4 style="color: #ff8a65; font-size: 0.95rem; margin-bottom: 8px;"><i class="fa-solid fa-triangle-exclamation"></i> 브라우저 보안 및 HTTPS 연결 수립 안내</h4>
                 <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin: 0;">
-                    현재 접속하신 사이트(<strong>https://</strong>)는 보안 프로토콜을 사용하므로, 브라우저가 일반 로컬 백엔드(<strong>http://localhost:5000</strong>)로의 통신을 차단할 수 있습니다.<br>
-                    이 문제를 해결하여 실제 백엔드를 연결하려면 아래 두 가지 중 하나의 방법을 선택하십시오:
+                    현재 접속하신 Vercel 사이트는 <strong>HTTPS</strong> 보안 프로토콜을 사용합니다. 로컬 Flask 서버 역시 <strong>HTTPS(https://localhost:5000)</strong>로 구동 중이나, 자체 발급(adhoc) SSL 인증서를 사용하므로 브라우저가 첫 연결을 일시 차단할 수 있습니다.<br>
+                    정상적인 연동을 위해 다음 중 하나의 방법을 진행해 주십시오:
                 </p>
                 <ul style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 8px; padding-left: 20px; line-height: 1.6;">
-                    <li><strong>방법 A (추천)</strong>: 로컬 백엔드가 켜져 있는 상태에서 Vercel 웹사이트 대신 로컬 주소인 <a href="http://localhost:5000" target="_blank" style="color: var(--accent-blue); text-decoration: underline; font-weight: bold;">http://localhost:5000</a>으로 직접 접속하여 사용하면 차단 없이 완벽하게 연동됩니다.</li>
-                    <li><strong>방법 B (터널링)</strong>: <code>ngrok http 5000</code> 등을 사용해 로컬 백엔드를 보안 터널(<strong>https://</strong>...ngrok-free.app) 주소로 변환한 후, 해당 https 주소를 위 입력창에 입력하고 연결하십시오.</li>
+                    <li><strong>보안 승인 방법 (추천)</strong>: 새 탭에서 <a href="https://localhost:5000/api/rag/status" target="_blank" style="color: var(--accent-blue); text-decoration: underline; font-weight: bold;">https://localhost:5000/api/rag/status</a>에 접속한 후, 브라우저 경고창에서 <strong>"고급" &gt; "localhost(안전하지 않음)로 이동"</strong>을 클릭하여 임시 인증을 허용하십시오. 그 후 이 페이지로 돌아와 다시 [연결하기] 버튼을 누르면 완전히 연결됩니다.</li>
+                    <li><strong>방법 A</strong>: 로컬 백엔드가 켜져 있는 상태에서 Vercel 웹사이트 대신 로컬 주소인 <a href="https://localhost:5000" target="_blank" style="color: var(--accent-blue); text-decoration: underline; font-weight: bold;">https://localhost:5000</a>으로 직접 접속하여 사용하면 보안 경고 수락 후 외부 인터넷 경유 없이 원활하게 연동됩니다.</li>
+                    <li><strong>방법 B (터널링)</strong>: <code>npx localtunnel --port 5000 --local-https</code> 등을 사용해 로컬 백엔드를 외부 공유가 가능한 보안 터널(<strong>https://</strong>...) 주소로 변환한 후, 해당 https 주소를 위 입력창에 입력하고 연결하십시오.</li>
                 </ul>
             </div>
         </section>

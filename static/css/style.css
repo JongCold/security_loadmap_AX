@@ -100,6 +100,27 @@ body {
     font-weight: 300;
 }
 
+/* Demo Mode Banner */
+.demo-banner {
+    margin-top: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 24px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(155, 81, 224, 0.2), rgba(0, 242, 254, 0.1));
+    border: 1px solid rgba(155, 81, 224, 0.35);
+    color: #bb86fc;
+    font-size: 0.9rem;
+    font-weight: 600;
+    animation: demoPulse 2s ease-in-out infinite;
+}
+
+@keyframes demoPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
 /* Cards (Glassmorphism) */
 .glass {
     background: var(--card-bg);

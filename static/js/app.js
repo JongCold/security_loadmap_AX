@@ -1,4 +1,164 @@
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * Security Roadmap Agent - Flask 로컬 배포용 프론트엔드 스크립트 (동기화됨)
+ */
+
+const CONFIG = {
+    DEFAULT_API_BASE_URL: 'https://127.0.0.1:5000',
+    HEALTH_CHECK_TIMEOUT: 3000,
+    LOCAL_BACKEND_CANDIDATES: [
+        'https://127.0.0.1:5000',
+        'https://localhost:5000'
+    ]
+};
+
+// 전역 상태 변수
+let currentApiBaseUrl = '';
+let isConnected = false;
+let uploadedData = null;
+let mappedResults = null;
+let envFilepath = null;
+let assetFilepath = null;
+
+// ====================================================================
+// 초기화 및 연결 탐지 로직
+// ====================================================================
+document.addEventListener('DOMContentLoaded', async () => {
+    // 1. API 주소 초기값 설정 (로컬 스토리지 -> 현재 접속중인 origin -> 기본값 순)
+    const savedUrl = localStorage.getItem('SECURITY_AGENT_API_URL');
+    if (savedUrl) {
+        currentApiBaseUrl = savedUrl;
+    } else {
+        // 현재 로컬 호스트 주소(origin)를 디폴트로 사용하도록 고도화
+        currentApiBaseUrl = window.location.origin || CONFIG.DEFAULT_API_BASE_URL;
+    }
+
+    // UI 요소 바인딩 및 이벤트 초기화
+    initializeUI();
+
+    // 연결 시도 및 UI 동기화
+    await checkAndApplyConnection(currentApiBaseUrl);
+});
+
+/**
+ * 로컬 Flask 후보 서버 자동 탐색
+ */
+async function autoDetectBackend() {
+    console.log('[시스템] API_BASE_URL 미지정 — 로컬 Flask 서버 후보 탐색 시작...');
+    for (const candidateUrl of CONFIG.LOCAL_BACKEND_CANDIDATES) {
+        const connected = await tryConnectBackend(candidateUrl);
+        if (connected) {
+            console.log(`[시스템] 자동 감지 성공: ${candidateUrl}`);
+            return candidateUrl;
+        }
+    }
+    return null;
+}
+
+/**
+ * 지정된 백엔드 URL에 헬스체크를 시도
+ */
+async function tryConnectBackend(baseUrl) {
+    if (!baseUrl) return false;
+    const formattedUrl = baseUrl.replace(/\/+$/, "");
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), CONFIG.HEALTH_CHECK_TIMEOUT);
+        
+        const response = await fetch(`${formattedUrl}/api/rag/status`, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        return response.ok;
+    } catch (e) {
+        console.warn(`[시스템] 연결 실패 (${formattedUrl}):`, e.message);
+        return false;
+    }
+}
+
+/**
+ * 연결 상태 체크 및 UI 업데이트 적용
+ */
+async function checkAndApplyConnection(targetUrl) {
+    const formattedUrl = targetUrl.replace(/\/+$/, "");
+    const statusBadge = document.getElementById('connection-status-badge');
+    const errorGuide = document.getElementById('connection-error-guide');
+    const urlInput = document.getElementById('api-url-input');
+    
+    if (urlInput) {
+        urlInput.value = formattedUrl;
+    }
+
+    // 헬스체크 시도
+    isConnected = await tryConnectBackend(formattedUrl);
+    
+    if (isConnected) {
+        currentApiBaseUrl = formattedUrl;
+        localStorage.setItem('SECURITY_AGENT_API_URL', formattedUrl);
+        
+        // 연결 성공 UI
+        if (statusBadge) {
+            statusBadge.className = 'table-badge badge-green';
+            statusBadge.innerHTML = `<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--accent-green);"></span> 연결 완료`;
+        }
+        if (errorGuide) {
+            errorGuide.style.display = 'none'; // 경고창 숨김
+        }
+        console.log(`[시스템] 백엔드 서버 연동 성공! URL: ${currentApiBaseUrl}`);
+        toggleInputs(false); // 입력 활성화
+    } else {
+        // 연결 실패 UI
+        if (statusBadge) {
+            statusBadge.className = 'table-badge badge-red';
+            statusBadge.innerHTML = `<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--accent-red);"></span> 연결 끊김`;
+        }
+        if (errorGuide) {
+            errorGuide.style.display = 'block'; // 경고창 노출
+        }
+        console.warn(`[시스템] 백엔드 서버에 연결할 수 없습니다. URL: ${formattedUrl}`);
+        toggleInputs(true); // 입력 비활성화
+    }
+}
+
+/**
+ * 서버 미연결 상태일 때 관련 컨트롤 비활성화 처리
+ */
+function toggleInputs(disabled) {
+    const fileInputs = ['file-input', 'file-input-env', 'file-input-asset'];
+    fileInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = disabled;
+    });
+
+    const dropzones = ['dropzone', 'dropzone-env', 'dropzone-asset'];
+    dropzones.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            if (disabled) {
+                el.style.opacity = '0.5';
+                el.style.pointerEvents = 'none';
+            } else {
+                el.style.opacity = '1';
+                el.style.pointerEvents = 'auto';
+            }
+        }
+    });
+
+    const btnMapStart = document.getElementById('btn-map-start');
+    if (btnMapStart) btnMapStart.disabled = disabled;
+}
+
+/**
+ * API 호출용 URL 래퍼
+ */
+function apiUrl(path) {
+    return `${currentApiBaseUrl}${path}`;
+}
+
+// ====================================================================
+// UI 초기화 및 이벤트 바인딩
+// ====================================================================
+function initializeUI() {
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('file-input');
     const fileInfo = document.getElementById('file-info');
@@ -22,21 +182,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnExport = document.getElementById('btn-export');
     const modelSelect = document.getElementById('model-select');
 
-    let uploadedData = null;  // 업로드 성공 후 보관할 체크리스트 데이터
-    let mappedResults = null; // 매핑 완료 후 최종 결과 데이터
-    let envFilepath = null;   // 사전환경조사서 파일 경로
-    let assetFilepath = null; // 자산목록 파일 경로
+    // 백엔드 연결 제어 관련 바인딩
+    const btnConnectBackend = document.getElementById('btn-connect-backend');
+    const apiUrlInput = document.getElementById('api-url-input');
+
+    if (btnConnectBackend && apiUrlInput) {
+        btnConnectBackend.addEventListener('click', async () => {
+            const targetUrl = apiUrlInput.value.trim();
+            if (!targetUrl) {
+                alert('연결할 백엔드 API 서버 URL을 입력해주세요.');
+                return;
+            }
+            btnConnectBackend.disabled = true;
+            btnConnectBackend.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 연결 중...`;
+            await checkAndApplyConnection(targetUrl);
+            btnConnectBackend.disabled = false;
+            btnConnectBackend.innerHTML = `<i class="fa-solid fa-circle-check"></i> 연결하기`;
+        });
+    }
 
     // 1. 드롭존 클릭 시 파일 브라우저 열기
-    dropzone.addEventListener('click', () => fileInput.click());
+    if (dropzone) dropzone.addEventListener('click', () => fileInput.click());
     if (dropzoneEnv) dropzoneEnv.addEventListener('click', () => fileInputEnv.click());
     if (dropzoneAsset) dropzoneAsset.addEventListener('click', () => fileInputAsset.click());
 
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            handleFileUpload(e.target.files[0]);
-        }
-    });
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+    }
     if (fileInputEnv) {
         fileInputEnv.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
@@ -84,14 +260,18 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // 중복 업로드/분석 방지 - 로딩 중 처리
+        if (!isConnected) {
+            alert('백엔드 서버와 연결이 끊어진 상태입니다. 연결 상태를 확인하십시오.');
+            return;
+        }
+
         fileInput.disabled = true;
         fileInfo.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 파일 분석 중...`;
         
         const formData = new FormData();
         formData.append('file', file);
 
-        fetch('/api/upload', {
+        fetch(apiUrl('/api/upload'), {
             method: 'POST',
             body: formData
         })
@@ -104,7 +284,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 companyNameBadge.textContent = data.company;
                 uploadActions.style.display = 'block';
                 
-                // 업로드 완료 즉시, 기존 엑셀에 적혀있던 매핑 데이터 렌더링
                 mappedResults = data.items;
                 renderResultTable(data.items);
                 resultCard.style.display = 'block';
@@ -117,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fileInput.disabled = false;
             console.error(err);
             fileInfo.innerHTML = ``;
-            alert('서버 통신 실패');
+            alert('서버 통신 실패. 백엔드 서버가 구동 중인지 확인해주세요.');
         });
     }
 
@@ -128,13 +307,18 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        if (!isConnected) {
+            alert('백엔드 서버와 연결이 끊어진 상태입니다.');
+            return;
+        }
+
         fileInputEnv.disabled = true;
         fileInfoEnv.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 업로드 중...`;
         
         const formData = new FormData();
         formData.append('file', file);
 
-        fetch('/api/upload_env', {
+        fetch(apiUrl('/api/upload_env'), {
             method: 'POST',
             body: formData
         })
@@ -170,13 +354,18 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        if (!isConnected) {
+            alert('백엔드 서버와 연결이 끊어진 상태입니다.');
+            return;
+        }
+
         fileInputAsset.disabled = true;
         fileInfoAsset.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 업로드 중...`;
         
         const formData = new FormData();
         formData.append('file', file);
 
-        fetch('/api/upload_asset', {
+        fetch(apiUrl('/api/upload_asset'), {
             method: 'POST',
             body: formData
         })
@@ -206,7 +395,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // 버튼 비활성화 및 로딩 UI 기동
+        if (!isConnected) {
+            alert('백엔드 서버 연동이 필요한 작업입니다.');
+            return;
+        }
+
         btnMapStart.disabled = true;
         btnMapStart.style.opacity = '0.6';
         btnMapStart.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 분석 처리 중...`;
@@ -219,7 +412,6 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingOverlay.style.display = 'block';
         progressBar.style.width = '10%';
 
-        // 시각적 느낌을 살리는 진행률 시뮬레이션
         let progress = 10;
         const interval = setInterval(() => {
             if (progress < 90) {
@@ -229,7 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 1200);
 
-        fetch('/api/map', {
+        fetch(apiUrl('/api/map'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -254,7 +446,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     mappedResults = data.results;
                     renderResultTable(data.results);
                     resultCard.style.display = 'block';
-                    // 테이블 상단으로 스크롤 이동
                     resultCard.scrollIntoView({ behavior: 'smooth' });
                 } else {
                     alert(data.message || '매핑 실행 오류');
@@ -279,18 +470,15 @@ document.addEventListener('DOMContentLoaded', () => {
         results.forEach((res, index) => {
             const tr = document.createElement('tr');
             
-            // 시급성 배지 스타일 결정
             const urgencyVal = parseInt(res.시급성, 10) || 3;
             const urgencyClass = urgencyVal >= 4 ? 'badge-red' : 'badge-blue';
             
-            // 위험도 select 옵션 생성
             const riskVal = parseInt(res.위험도, 10) || 3;
             let riskOptions = '';
             for (let i = 1; i <= 5; i++) {
                 riskOptions += `<option value="${i}" ${riskVal === i ? 'selected' : ''}>${i}단계</option>`;
             }
             
-            // 로드맵 연도 select 옵션 생성
             const yearVal = String(res.로드맵연도 || '').trim();
             const yearOptionsList = ['2026년', '2027년', '2028년', '2029년', '2030년', 'N/A'];
             let yearOptions = '';
@@ -342,7 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // 행별 저장(입력 완료) 이벤트 연결 및 실시간 메모리 동기화
+        // 행별 저장 이벤트 연결 및 실시간 메모리 동기화
         const saveButtons = resultTbody.querySelectorAll('.btn-save-row');
         saveButtons.forEach(btn => {
             const idx = parseInt(btn.getAttribute('data-idx'), 10);
@@ -350,7 +538,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const rowInputBudget = resultTbody.querySelector(`.input-budget[data-idx="${idx}"]`);
             const rowSelectYear = resultTbody.querySelector(`.select-year[data-idx="${idx}"]`);
 
-            // 실시간 메모리 데이터 동기화 리스너 추가
             if (rowSelectRisk) {
                 rowSelectRisk.addEventListener('change', () => {
                     mappedResults[idx].위험도 = parseInt(rowSelectRisk.value, 10);
@@ -368,21 +555,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             btn.addEventListener('click', () => {
-                // 클릭 시 최종 데이터 수집 및 업데이트
                 if (rowSelectRisk) mappedResults[idx].위험도 = parseInt(rowSelectRisk.value, 10);
                 if (rowInputBudget) mappedResults[idx].예상예산 = rowInputBudget.value.trim();
                 if (rowSelectYear) mappedResults[idx].로드맵연도 = rowSelectYear.value;
 
-                // 시각 피드백 제공 및 '적용됨' 상태 영구 고정
                 btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> 적용됨`;
                 btn.style.background = 'linear-gradient(135deg, var(--accent-green), #00e676)';
                 btn.style.color = '#0b0e1b';
-                btn.classList.add('applied'); // 고정 상태 마커 클래스 추가
+                btn.classList.add('applied');
             });
         });
     }
 
-    // 모달 팝업 컨트롤러 함수
+    // 모달 팝업 컨트롤러
     const textModal = document.getElementById('text-modal');
     const modalCloseBtn = document.getElementById('modal-close-btn');
     
@@ -405,14 +590,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 6. 결과 엑셀 추출 (다운로드) - 브라우저 세이프 브라우징 다운로드 경고 우회용 Form POST방식 적용
+    // 6. 결과 엑셀 추출 (다운로드)
     btnExport.addEventListener('click', () => {
         if (!mappedResults) {
             alert('내보낼 매핑 데이터가 존재하지 않습니다.');
             return;
         }
 
-        // 버튼 비활성화
+        if (!isConnected) {
+            alert('서버 연결이 해제되어 엑셀 다운로드가 불가능합니다.');
+            return;
+        }
+
         btnExport.disabled = true;
         btnExport.style.opacity = '0.6';
         btnExport.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 추출 중...`;
@@ -420,7 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const form = document.createElement('form');
             form.method = 'POST';
-            form.action = '/api/export';
+            form.action = apiUrl('/api/export');
             form.style.display = 'none';
 
             const inputData = document.createElement('input');
@@ -438,7 +627,6 @@ document.addEventListener('DOMContentLoaded', () => {
             form.submit();
             document.body.removeChild(form);
             
-            // 폼 전송 후 버튼 상태 순차적 복원
             setTimeout(() => {
                 btnExport.disabled = false;
                 btnExport.style.opacity = '1';
@@ -457,13 +645,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnClearUploads = document.getElementById('btn-clear-uploads');
     if (btnClearUploads) {
         btnClearUploads.addEventListener('click', () => {
+            if (!isConnected) {
+                alert('서버 연결이 필요합니다.');
+                return;
+            }
             if (confirm('정말 업로드된 모든 임시 엑셀 파일들을 영구 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
-                // 버튼 비활성화
                 btnClearUploads.disabled = true;
                 btnClearUploads.style.opacity = '0.6';
                 btnClearUploads.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 비우는 중...`;
 
-                fetch('/api/uploads/clear', {
+                fetch(apiUrl('/api/uploads/clear'), {
                     method: 'POST'
                 })
                 .then(res => res.json())
@@ -471,9 +662,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     btnClearUploads.disabled = false;
                     btnClearUploads.style.opacity = '1';
                     btnClearUploads.innerHTML = `<i class="fa-solid fa-trash-can"></i> 임시 파일 일괄 비우기`;
-
                     alert(data.message || '임시 파일이 삭제되었습니다.');
-                    // 업로드 상태 초기화
                     uploadedData = null;
                     envFilepath = null;
                     assetFilepath = null;
@@ -483,7 +672,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     uploadActions.style.display = 'none';
                     resultCard.style.display = 'none';
                     
-                    // 목록도 비워주기
                     const listPanel = document.getElementById('uploads-list-panel');
                     if (listPanel && listPanel.style.display !== 'none') {
                         loadUploadsList();
@@ -500,17 +688,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 8. RAG 지식 베이스 초기화 (삭제)
+    // 8. RAG 지식 베이스 초기화
     const btnClearRag = document.getElementById('btn-clear-rag');
     if (btnClearRag) {
         btnClearRag.addEventListener('click', () => {
+            if (!isConnected) {
+                alert('서버 연결이 필요합니다.');
+                return;
+            }
             if (confirm('⚠️ 경고: RAG 지식 베이스를 초기화하면 벡터 데이터베이스에 캐싱된 자사 솔루션의 청크 정보가 완전히 삭제됩니다.\n\n정말 초기화하시겠습니까?')) {
-                // 버튼 비활성화
                 btnClearRag.disabled = true;
                 btnClearRag.style.opacity = '0.6';
                 btnClearRag.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 초기화 중...`;
 
-                fetch('/api/rag/clear', {
+                fetch(apiUrl('/api/rag/clear'), {
                     method: 'POST'
                 })
                 .then(res => res.json())
@@ -518,10 +709,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     btnClearRag.disabled = false;
                     btnClearRag.style.opacity = '1';
                     btnClearRag.innerHTML = `<i class="fa-solid fa-dumpster-fire"></i> RAG 지식 베이스 초기화`;
-
                     alert(data.message || 'RAG 데이터가 성공적으로 초기화되었습니다.');
                     
-                    // RAG 목록 패널도 업데이트
                     const listPanel = document.getElementById('rag-list-panel');
                     if (listPanel && listPanel.style.display !== 'none') {
                         loadRagList();
@@ -546,7 +735,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (uploadsListPanel.style.display === 'none') {
                 uploadsListPanel.style.display = 'block';
                 btnViewUploads.innerHTML = `<i class="fa-solid fa-eye-slash"></i> 현황 닫기`;
-                loadUploadsList();
+                if (!isConnected) {
+                    const tbody = document.getElementById('uploads-list-tbody');
+                    const countText = document.getElementById('uploads-count-text');
+                    if (tbody) tbody.innerHTML = `<tr><td colspan="3" style="padding: 12px; text-align: center; color: #888;">📋 서버 연결이 필요합니다.</td></tr>`;
+                    if (countText) countText.textContent = '연결 필요';
+                } else {
+                    loadUploadsList();
+                }
             } else {
                 uploadsListPanel.style.display = 'none';
                 btnViewUploads.innerHTML = `<i class="fa-solid fa-eye"></i> 현황 보기`;
@@ -559,12 +755,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const countText = document.getElementById('uploads-count-text');
         if (!tbody) return;
 
-        // 현황 보기 버튼 임시 비활성화 (더블클릭/중복 호출 방지)
         if (btnViewUploads) btnViewUploads.disabled = true;
 
         tbody.innerHTML = `<tr><td colspan="3" style="padding: 12px; text-align: center; color: #888;"><i class="fa-solid fa-spinner fa-spin"></i> 로딩 중...</td></tr>`;
 
-        fetch('/api/uploads/list')
+        fetch(apiUrl('/api/uploads/list'))
         .then(res => res.json())
         .then(data => {
             if (btnViewUploads) btnViewUploads.disabled = false;
@@ -605,7 +800,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ragListPanel.style.display === 'none') {
                 ragListPanel.style.display = 'block';
                 btnViewRag.innerHTML = `<i class="fa-solid fa-eye-slash"></i> 현황 닫기`;
-                loadRagList();
+                if (!isConnected) {
+                    const tbody = document.getElementById('rag-list-tbody');
+                    const badge = document.getElementById('rag-count-badge');
+                    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="padding: 12px; text-align: center; color: #888;">📋 서버 연결이 필요합니다.</td></tr>`;
+                    if (badge) badge.textContent = '연결 필요';
+                } else {
+                    loadRagList();
+                }
             } else {
                 ragListPanel.style.display = 'none';
                 btnViewRag.innerHTML = `<i class="fa-solid fa-eye"></i> 현황 보기`;
@@ -618,12 +820,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const badge = document.getElementById('rag-count-badge');
         if (!tbody) return;
 
-        // 현황 보기 버튼 임시 비활성화 (더블클릭/중복 호출 방지)
         if (btnViewRag) btnViewRag.disabled = true;
 
         tbody.innerHTML = `<tr><td colspan="6" style="padding: 12px; text-align: center; color: #888;"><i class="fa-solid fa-spinner fa-spin"></i> 로딩 중...</td></tr>`;
 
-        fetch('/api/rag/list')
+        fetch(apiUrl('/api/rag/list'))
         .then(res => res.json())
         .then(data => {
             if (btnViewRag) btnViewRag.disabled = false;
@@ -658,4 +859,4 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.innerHTML = `<tr><td colspan="6" style="padding: 12px; text-align: center; color: var(--accent-red);">RAG 데이터 조회 실패</td></tr>`;
         });
     }
-});
+}

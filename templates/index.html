@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>보안 로드맵 수립 에이전트 (AX 솔루션)</title>
+    <meta name="description" content="AX (AI Transformation) 기반 정보보안감사 보안 솔루션 로드맵 자동 수립 플랫폼. 로컬 sLLM과 RAG 기술을 활용한 오프라인 보안 컨설팅 자동화 시스템.">
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
     <!-- FontAwesome for Icons -->
@@ -25,6 +26,39 @@
             </div>
             <p class="subtitle">AX (AI Transformation) 기반 보안 솔루션 로드맵 수립 플랫폼</p>
         </header>
+
+        <!-- Backend Connection Control Panel -->
+        <section class="card connection-card glass" style="margin-bottom: 2rem; padding: 20px 30px;">
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <i class="fa-solid fa-link" style="font-size: 1.4rem; color: var(--accent-blue);"></i>
+                    <h2 style="font-size: 1.15rem; font-weight: 600; margin: 0;">백엔드 서버 연결 제어</h2>
+                    <span id="connection-status-badge" class="table-badge badge-red" style="font-size: 0.8rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 6px;">
+                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--accent-red);"></span> 연결 대기 중
+                    </span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 280px; max-width: 600px;">
+                    <input type="text" id="api-url-input" class="edit-input" style="padding: 10px 14px; font-size: 0.9rem;" placeholder="https://localhost:5000">
+                    <button class="btn btn-primary" id="btn-connect-backend" style="padding: 10px 20px; font-size: 0.9rem; white-space: nowrap;">
+                        <i class="fa-solid fa-circle-check"></i> 연결하기
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Connection Warning/Guide Message -->
+            <div id="connection-error-guide" style="margin-top: 15px; padding: 15px; border-radius: 10px; background: rgba(255, 61, 0, 0.08); border: 1px solid rgba(255, 61, 0, 0.25); display: block;">
+                <h4 style="color: #ff8a65; font-size: 0.95rem; margin-bottom: 8px;"><i class="fa-solid fa-triangle-exclamation"></i> 브라우저 보안 및 HTTPS 연결 수립 안내</h4>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin: 0;">
+                    현재 접속하신 Vercel 사이트는 <strong>HTTPS</strong> 보안 프로토콜을 사용합니다. 로컬 Flask 서버 역시 <strong>HTTPS(https://localhost:5000)</strong>로 구동 중이나, 자체 발급(adhoc) SSL 인증서를 사용하므로 브라우저가 첫 연결을 일시 차단할 수 있습니다.<br>
+                    정상적인 연동을 위해 다음 중 하나의 방법을 진행해 주십시오:
+                </p>
+                <ul style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 8px; padding-left: 20px; line-height: 1.6;">
+                    <li><strong>보안 승인 방법 (추천)</strong>: 새 탭에서 <a href="https://localhost:5000/api/rag/status" target="_blank" style="color: var(--accent-blue); text-decoration: underline; font-weight: bold;">https://localhost:5000/api/rag/status</a>에 접속한 후, 브라우저 경고창에서 <strong>"고급" &gt; "localhost(안전하지 않음)로 이동"</strong>을 클릭하여 임시 인증을 허용하십시오. 그 후 이 페이지로 돌아와 다시 [연결하기] 버튼을 누르면 완전히 연결됩니다.</li>
+                    <li><strong>방법 A</strong>: 로컬 백엔드가 켜져 있는 상태에서 Vercel 웹사이트 대신 로컬 주소인 <a href="https://localhost:5000" target="_blank" style="color: var(--accent-blue); text-decoration: underline; font-weight: bold;">https://localhost:5000</a>으로 직접 접속하여 사용하면 보안 경고 수락 후 외부 인터넷 경유 없이 원활하게 연동됩니다.</li>
+                    <li><strong>방법 B (터널링)</strong>: <code>npx localtunnel --port 5000 --local-https</code> 등을 사용해 로컬 백엔드를 외부 공유가 가능한 보안 터널(<strong>https://</strong>...) 주소로 변환한 후, 해당 https 주소를 위 입력창에 입력하고 연결하십시오.</li>
+                </ul>
+            </div>
+        </section>
 
         <!-- Main Card Section -->
         <main class="main-content">
@@ -188,7 +222,7 @@
                 </div>
                 <div class="company-badge-container">
                     <span class="badge label-badge">대상 기업명</span>
-                    <span class="badge val-badge" id="company-name">KG제로인</span>
+                    <span class="badge val-badge" id="company-name">DEMO 기업</span>
                 </div>
 
                 <div class="table-container">
@@ -217,7 +251,7 @@
 
         <!-- Footer -->
         <footer class="app-footer">
-            <p>&copy; 2026 Security Roadmap Agent. Powered by Ollama Gemma 2 & Flask Style-Cloner.</p>
+            <p>&copy; 2026 Security Roadmap Agent. Powered by Ollama Gemma 2 &amp; Flask Style-Cloner.</p>
         </footer>
     </div>
 

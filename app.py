@@ -491,5 +491,6 @@ def list_rag():
 
 
 if __name__ == '__main__':
-    print("Starting Flask server on http://localhost:5000", flush=True)
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    print("Starting Flask server on https://localhost:5000 (with SSL adhoc context)", flush=True)
+    # Vercel(HTTPS)과의 브라우저 Mixed Content 보안 차단 우회를 위해 adhoc SSL 컨텍스트 사용
+    app.run(host='0.0.0.0', port=5000, ssl_context='adhoc', debug=False)
