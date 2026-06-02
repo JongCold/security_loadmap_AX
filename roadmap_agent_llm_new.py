@@ -219,6 +219,101 @@ def safe_int(val, default=3):
         return default
 
 
+def reformat_note(note_val, res_sol="N/A", res_vendor="N/A"):
+    """
+    기존 비고 포맷을 다음 사용자 요구 사항에 맞춰 변환하는 안전한 후처리 함수:
+    [추천 솔루션] : {제품명}|{제조사}
+    [선정 이유]
+    1. 이유1
+    2. 이유2
+    """
+    note_val = str(note_val).strip()
+    
+    # 1. 기존 값 파싱 또는 파라미터 값 기본값 설정
+    sol_name = res_sol if res_sol else "N/A"
+    vendor_name = res_vendor if res_vendor else "N/A"
+    
+    # note_val에서 [추천 솔루션] 값 파싱
+    sol_match = re.search(r'\[추천\s*솔루션\]\s*:?\s*([^|\-\n]+?)\s*(?:-|\|)\s*([^\n]+)', note_val)
+    if sol_match:
+        p1 = sol_match.group(1).strip()
+        p2 = sol_match.group(2).strip()
+        vendors = ["ahnlab", "secui", "genians", "wins", "piolink", "igloosec", "somansa", "softcamp", "fasoo", "jiransoft", "kingsinformation", "estsoft", "cyberone", "kvine", "n/a"]
+        if p1.lower() in vendors:
+            vendor_name = p1
+            sol_name = p2
+        elif p2.lower() in vendors:
+            vendor_name = p2
+            sol_name = p1
+        else:
+            if res_sol and res_sol != "N/A":
+                sol_name = res_sol
+                vendor_name = res_vendor
+            else:
+                vendor_name = p1
+                sol_name = p2
+    else:
+        # 단순 매치 (예: [추천 솔루션] AhnLab - V3 Office Security)
+        sol_match_simple = re.search(r'\[추천\s*솔루션\]\s*([^\n\-]+?)\s*-\s*([^\n]+)', note_val)
+        if sol_match_simple:
+            vendor_name = sol_match_simple.group(1).strip()
+            sol_name = sol_match_simple.group(2).strip()
+        else:
+            if "N/A" in note_val:
+                sol_name = "N/A"
+                vendor_name = "N/A"
+
+    # N/A 대소문자 정리
+    if sol_name.upper() == "NONE" or sol_name.upper() == "N/A" or not sol_name:
+        sol_name = "N/A"
+    if vendor_name.upper() == "NONE" or vendor_name.upper() == "N/A" or not vendor_name:
+        vendor_name = "N/A"
+
+    # 2. 선정 이유 파싱 및 재배열
+    reason_text = ""
+    reason_match = re.search(r'\[선정\s*이유\]\s*(.*)', note_val, re.DOTALL)
+    if reason_match:
+        reason_text = reason_match.group(1).strip()
+    else:
+        reason_text = re.sub(r'\[추천\s*솔루션\].*?(\n|$)', '', note_val).strip()
+        
+    reason_clean = re.sub(r'^\d+[\.\)\s\-]+', '', reason_text, flags=re.MULTILINE)
+    reason_clean = re.sub(r'\s+', ' ', reason_clean).strip()
+    
+    # 문장 분할 (마침표 기준)
+    sentences = []
+    raw_sentences = re.split(r'\.\s*', reason_clean)
+    for s in raw_sentences:
+        s_clean = s.strip()
+        if s_clean:
+            if not s_clean.endswith('.'):
+                s_clean += '.'
+            if len(s_clean) > 3:
+                sentences.append(s_clean)
+                
+    if not sentences:
+        if sol_name != "N/A":
+            sentences = [f"{sol_name} 도입을 통해 보안 정책을 강제화하고 외부 보안 위협에 대비한 통제 수준을 강화하기 위함입니다."]
+        else:
+            sentences = ["기술적 보안 솔루션 도입 대신 내부 보안 지침 수립 및 관리 감독 프로세스 강화를 권고합니다."]
+            
+    # 최종 재포맷 문자열 조립
+    if sol_name == "N/A" and vendor_name == "N/A":
+        rec_line = "[추천 솔루션] : N/A"
+    else:
+        rec_line = f"[추천 솔루션] : {sol_name}|{vendor_name}"
+        
+    lines = [rec_line, "[선정 이유]"]
+    
+    if len(sentences) == 1:
+        lines.append(f"1. {sentences[0]}")
+    else:
+        for idx, sentence in enumerate(sentences[:3]):
+            lines.append(f"{idx+1}. {sentence}")
+            
+    return "\n".join(lines)
+
+
 def call_local_gemma(item, sol_context=None, model_name=OLLAMA_MODEL):
     """로컬 Ollama LLM 모델을 사용하여 솔루션 자동 추천 및 매핑 수행 (끊긴 프롬프트 및 완성 구조 복구)"""
     best_sol, score = find_best_matching_solution(item)
@@ -242,9 +337,12 @@ def call_local_gemma(item, sol_context=None, model_name=OLLAMA_MODEL):
 - "시급성": 1~5 사이의 정수값 (법적 요구가 존재하거나 시급한 경우 4~5로 설정).
 - "위험도": 1~5 사이의 정수값.
 - "예상예산": "₩30,000,000" 또는 솔루션 예산 규모 기재.
-- "비고": 아래 서식을 정확히 준수하여 한국어로 작성.
-  [추천 솔루션] {best_sol['제조사명']} - {best_sol['제품명']}
-  [선정 이유] {best_sol['제품명기능설명']}을 바탕으로 고객사의 결함 사항을 조치하는 사유 작성.
+- "비고": 아래 서식을 정확히 준수하여 한국어로 작성. (선정이유는 문장 단위로 분할하여 번호를 매길 것)
+  [추천 솔루션] : {best_sol['제품명']}|{best_sol['제조사명']}
+  [선정 이유]
+  1. 선정 이유 내용 1
+  2. 선정 이유 내용 2
+  3. 선정 이유 내용 3
 """
     else:
         rag_guideline = f"""
@@ -256,8 +354,9 @@ def call_local_gemma(item, sol_context=None, model_name=OLLAMA_MODEL):
 - "위험도": 1~5 사이의 정수값.
 - "예상예산": "영업 문의가 필요한 영역 논의 필요." 기재.
 - "비고": 아래 서식을 준수하여 작성.
-  [추천 솔루션] N/A
-  [선정 이유] 기술적 장비 도입 대신 사내 보안 지침/절차 수립 및 수동 관리 감독 프로세스 강화를 권고합니다.
+  [추천 솔루션] : N/A
+  [선정 이유]
+  1. 기술적 장비 도입 대신 사내 보안 지침/절차 수립 및 수동 관리 감독 프로세스 강화를 권고합니다.
 """
 
     prompt = f"""
@@ -299,7 +398,14 @@ def call_local_gemma(item, sol_context=None, model_name=OLLAMA_MODEL):
             final_res["시급성"] = safe_int(res_data.get("시급성", 3), 3)
             final_res["위험도"] = safe_int(res_data.get("위험도", 3), 3)
             final_res["예상예산"] = res_data.get("예상예산", "영업 문의가 필요한 영역 논의 필요.")
-            final_res["비고"] = res_data.get("비고", "")
+            
+            # 비고 후처리 자동 적용
+            raw_note = res_data.get("비고", "")
+            final_res["비고"] = reformat_note(
+                raw_note, 
+                res_sol=best_sol.get("제품명", "N/A") if best_sol else "N/A",
+                res_vendor=best_sol.get("제조사명", "N/A") if best_sol else "N/A"
+            )
             
             if best_sol:
                 final_res["추천솔루션"] = best_sol.get("제품명", "N/A")
@@ -319,7 +425,7 @@ def call_local_gemma(item, sol_context=None, model_name=OLLAMA_MODEL):
         "시급성": 3,
         "위험도": 3,
         "예상예산": "영업 문의가 필요한 영역 논의 필요.",
-        "비고": "",
+        "비고": reformat_note("", best_sol.get("제품명", "N/A") if best_sol else "N/A", best_sol.get("제조사명", "N/A") if best_sol else "N/A"),
         "추천솔루션": best_sol.get("제품명", "N/A") if best_sol else "N/A",
         "제조사": best_sol.get("제조사명", "N/A") if best_sol else "N/A"
     }
@@ -328,6 +434,22 @@ def call_local_gemma(item, sol_context=None, model_name=OLLAMA_MODEL):
 
 def generate_roadmap_excel(results, company_name, output_filepath, env_filepath=None, asset_filepath=None):
     """원본 로드맵 템플릿 서식을 유지하며 매핑 결과 및 사전환경조사서, 자산목록 데이터를 통합하여 작성"""
+    
+    def count_lines(text, max_chars):
+        if not text:
+            return 1
+        lines = str(text).split('\n')
+        total = 0
+        for line in lines:
+            v_len = 0
+            for ch in line:
+                if ord(ch) > 127: # 한글 등 멀티바이트
+                    v_len += 2
+                else:
+                    v_len += 1
+            total += max(1, math.ceil(v_len / max_chars))
+        return total
+
     if not os.path.exists(ROADMAP_TEMPLATE_PATH):
         raise FileNotFoundError(f"템플릿 엑셀 파일을 찾을 수 없습니다: {ROADMAP_TEMPLATE_PATH}")
         
@@ -523,7 +645,15 @@ def generate_roadmap_excel(results, company_name, output_filepath, env_filepath=
                 # 자산 데이터 셀 기입 및 포맷 보존
                 for i, asset in enumerate(asset_rows):
                     r = asset_data_start + i
-                    sheet.row_dimensions[r].height = sheet.row_dimensions[asset_data_start].height
+                    
+                    # 자산목록의 기능(5열), 비고(14열) 등을 분석하여 동적 행 높이 결정
+                    a_func = asset.get("기능", "")
+                    a_note = asset.get("비고", "")
+                    h_func = count_lines(a_func, 30)
+                    h_note = count_lines(a_note, 30)
+                    max_asset_lines = max(h_func, h_note)
+                    sheet.row_dimensions[r].height = max(28, max_asset_lines * 16 + 8)
+
                     sheet.cell(row=r, column=1, value=i + 1)
                     
                     cols_map = {
@@ -589,7 +719,6 @@ def generate_roadmap_excel(results, company_name, output_filepath, env_filepath=
     
     for idx, res in enumerate(results):
         current_row = start_row + idx
-        sheet.row_dimensions[current_row].height = sheet.row_dimensions[style_source_row].height
         for col_idx in range(1, 17):
             copy_cell_style(sheet.cell(row=style_source_row, column=col_idx), sheet.cell(row=current_row, column=col_idx))
             
@@ -606,16 +735,69 @@ def generate_roadmap_excel(results, company_name, output_filepath, env_filepath=
         sheet.cell(row=current_row, column=14, value=res.get("예상예산", "비용 발생 안 함"))
         sheet.cell(row=current_row, column=15, value=res.get("로드맵연도", "2026년"))
  
-        # 비고 필드 보정 안전장치 반영
+        # 비고 필드 신규 가시성 포맷 후처리 강제 적용
         note_val = res.get("비고", "")
-        if not note_val or str(note_val).strip().lower() in ["", "none"]:
-            rec_sol = res.get("추천솔루션", "N/A")
-            rec_vendor = res.get("제조사", "N/A")
-            if rec_sol != "N/A":
-                note_val = f"[추천 솔루션] {rec_vendor} - {rec_sol}\n[선정 이유] 기술 조치 및 통제 수준 강화 목적 권고."
-            else:
-                note_val = f"[추천 솔루션] N/A\n[선정 이유] 사내 내부 프로세스 지침 개정 및 수동 관리 감독 프로세스 강화."
-        sheet.cell(row=current_row, column=16, value=note_val)
+        rec_sol = res.get("추천솔루션", "N/A")
+        rec_vendor = res.get("제조사", "N/A")
+        reformatted_note = reformat_note(note_val, res_sol=rec_sol, res_vendor=rec_vendor)
+        sheet.cell(row=current_row, column=16, value=reformatted_note)
+
+        # 개선방안(7, 8열) 폰트 색상을 빨간색(FF0000)으로 설정
+        for c_idx in [7, 8]:
+            cell_improv = sheet.cell(row=current_row, column=c_idx)
+            if cell_improv.font:
+                cell_improv.font = Font(
+                    name=cell_improv.font.name,
+                    size=cell_improv.font.size,
+                    bold=cell_improv.font.bold,
+                    italic=cell_improv.font.italic,
+                    color="FF0000"
+                )
+
+        # 비고(16열) 폰트 색상을 검정색(000000)으로 설정
+        cell_note = sheet.cell(row=current_row, column=16)
+        if cell_note.font:
+            cell_note.font = Font(
+                name=cell_note.font.name,
+                size=cell_note.font.size,
+                bold=cell_note.font.bold,
+                italic=cell_note.font.italic,
+                color="000000"
+            )
+
+        # 정렬 설정 및 wrap_text 강제 적용
+        alignments = {
+            1: Alignment(horizontal="center", vertical="center"),
+            2: Alignment(horizontal="center", vertical="center", wrap_text=True),
+            3: Alignment(horizontal="left", vertical="center", wrap_text=True),
+            4: Alignment(horizontal="left", vertical="center", wrap_text=True),
+            5: Alignment(horizontal="left", vertical="center", wrap_text=True),
+            6: Alignment(horizontal="left", vertical="center", wrap_text=True),
+            7: Alignment(horizontal="left", vertical="center", wrap_text=True),
+            8: Alignment(horizontal="left", vertical="center", wrap_text=True),
+            9: Alignment(horizontal="center", vertical="center", wrap_text=True),
+            10: Alignment(horizontal="left", vertical="center", wrap_text=True),
+            11: Alignment(horizontal="center", vertical="center", wrap_text=True),
+            12: Alignment(horizontal="center", vertical="center"),
+            13: Alignment(horizontal="center", vertical="center"),
+            14: Alignment(horizontal="center", vertical="center", wrap_text=True),
+            15: Alignment(horizontal="center", vertical="center"),
+            16: Alignment(horizontal="left", vertical="center", wrap_text=True),
+        }
+        for col_idx in range(1, 17):
+            cell = sheet.cell(row=current_row, column=col_idx)
+            if col_idx in alignments:
+                cell.alignment = alignments[col_idx]
+
+        # 행 높이 동적 계산 적용 (텍스트 길이에 대응)
+        h_detail = count_lines(res.get("세부점검내용", ""), 40)
+        h_status = count_lines(res.get("운영현황_증적", ""), 45)
+        h_improv = count_lines(res.get("개선방안", ""), 50)
+        h_note = count_lines(reformatted_note, 40)
+        
+        max_lines = max(h_detail, h_status, h_improv, h_note)
+        calculated_height = max(35, max_lines * 16 + 12)
+        sheet.row_dimensions[current_row].height = calculated_height
  
     # 4. 통합 병합 일괄 복구 적용
     for m_range in original_merges:
@@ -646,6 +828,28 @@ def generate_roadmap_excel(results, company_name, output_filepath, env_filepath=
             wb[name].title = f"01_KG그룹({company_name})"
             break
  
+    # 6. 열 너비 일괄 최적화 (가독성 향상)
+    column_widths = {
+        'A': 6,   # No
+        'B': 18,  # 항목명
+        'C': 22,  # 세부점검내용 (병합되므로 C+D)
+        'D': 22,
+        'E': 22,  # 운영현황 (병합되므로 E+F)
+        'F': 22,
+        'G': 25,  # 개선방안 (병합되므로 G+H)
+        'H': 25,
+        'I': 15,  # 보안영역
+        'J': 28,  # 과제명
+        'K': 22,  # 법적요구
+        'L': 10,  # 시급성
+        'M': 10,  # 위험도
+        'N': 18,  # 예상예산
+        'O': 12,  # 로드맵연도
+        'P': 45,  # 비고 (추천 솔루션 : 제품명|제조사)
+    }
+    for col_letter, width in column_widths.items():
+        sheet.column_dimensions[col_letter].width = width
+
     wb.save(output_filepath)
     return output_filepath
 

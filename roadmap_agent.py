@@ -18,7 +18,7 @@ load_dotenv()
 # 경로 정의
 CHECKLIST_PATH = r"c:\Security loadmap_Auto\2026년 KG제로인_내부보안점검_상세체크리스트_테스트 파일.xlsx"
 SOLUTION_LIST_PATH = r"c:\Security loadmap_Auto\자사 보안 솔루션 리스트 (1).xlsx"
-ROADMAP_TEMPLATE_PATH = r"c:\Security loadmap_Auto\2026년 KG그룹_제로인 정보보안감사_보안솔루션로드맵_v1.2.xlsx"
+ROADMAP_TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "{올해}년 KG그룹_{기업명} 정보보안감사_보안솔루션로드맵_{생성일}.xlsx")
 OUTPUT_PATH = r"c:\Security loadmap_Auto\2026년 KG그룹_제로인 정보보안감사_보안솔루션로드맵_결과.xlsx"
 
 # 룰 기반 매핑을 위한 키워드 사전 정의
