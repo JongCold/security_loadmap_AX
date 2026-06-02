@@ -109,11 +109,20 @@ def find_best_matching_solution(item):
         best_sol, similarity = rag.find_best_solution(item, similarity_threshold=0.20)
 
         if best_sol:
+            vendor = str(best_sol.get("제조사명", "")).strip()
+            prod = str(best_sol.get("제품명", "")).strip()
+            
+            # 제조사명이나 제품명이 공백이거나 무효값인 경우 2중 안전가드 차단
+            if (not vendor or vendor.lower() in ["", "nan", "n/a", "없음", "미정"]) or \
+               (not prod or prod.lower() in ["", "nan", "n/a", "없음", "미정"]):
+                print(f"[RAG] 공백 제조사/제품명 차단 우회 가드 작동 → N/A 처리 (제조사={vendor}, 제품={prod})", flush=True)
+                return None, similarity
+                
             return {
                 "보안영역": best_sol.get("보안영역", ""),
                 "솔루션구분": best_sol.get("솔루션구분", ""),
-                "제조사명": best_sol.get("제조사명", ""),
-                "제품명": best_sol.get("제품명", ""),
+                "제조사명": vendor,
+                "제품명": prod,
                 "제품명기능설명": best_sol.get("제품명기능설명", "")
             }, similarity
         else:

@@ -68,6 +68,48 @@ def get_keyword_matching_score(query_text, metadata):
     return min(1.0, coverage + meta_bonus)
 
 
+def has_ranking_penalty(metadata):
+    """
+    사용자 요구사항에 맞춘 RAG 솔루션 랭킹 후순위화(패널티) 판별기:
+    1. 제조사명 공백/무효값
+    2. 제품명 공백/무효값
+    3. 보안영역/솔루션구분에 '정보보안 관련 서비스'가 포함된 경우
+    4. 인력/컨설팅/교육/유지보수 등 용역 성격이 강한 솔루션
+    """
+    if not metadata:
+        return True
+        
+    vendor = str(metadata.get("제조사명", "")).strip()
+    prod = str(metadata.get("제품명", "")).strip()
+    area = str(metadata.get("보안영역", "")).strip()
+    sol_type = str(metadata.get("솔루션구분", "")).strip()
+    desc = str(metadata.get("제품명기능설명", "")).strip()
+
+    # 1. 제조사명 공백 여부
+    is_vendor_empty = (not vendor or vendor.lower() in ["", "nan", "n/a", "없음", "미정"])
+    
+    # 2. 제품명 공백 여부
+    is_prod_empty = (not prod or prod.lower() in ["", "nan", "n/a", "없음", "미정"])
+    
+    # 3. {정보보안 관련 서비스} 키워드 감지
+    is_service_area = False
+    service_keywords = ["정보보안 관련 서비스", "정보보안 관련서비스", "정보보안관련서비스", "정보보안 관련  서비스"]
+    for kw in service_keywords:
+        if kw in area or kw in sol_type or kw in desc:
+            is_service_area = True
+            break
+            
+    # 4. 단순 용역/컨설팅/교육/유지보수 관련 지시어
+    is_consulting_service = False
+    service_vendors = ["운영 및 관리", "관제서비스", "취약점 점검", "교육", "개인정보", "컨설팅", "유지보수", "보안관제", "KPMG", "삼정", "딜로이트", "삼일", "안진", "유지관리", "취약점점검"]
+    for sv in service_vendors:
+        if sv in vendor or sv in prod or sv in sol_type or sv in area:
+            is_consulting_service = True
+            break
+
+    return (is_vendor_empty or is_prod_empty or is_service_area or is_consulting_service)
+
+
 
 
 def _build_markdown_segment(row):
@@ -101,17 +143,9 @@ def _build_markdown_segment(row):
             # RAG에 임베딩하지 않고 버림
             return None, None
 
-    # 단순 용역, 컨설팅, 유지관리, 관제, 교육 서비스 업체 제외 (솔루션 제품만 매핑하기 위함)
-    # 제조사명(vendor)이나 제품명(prod_name)에 이 단어들이 포함되거나 용역/관리/관제/점검/컨설팅이 명시된 경우 제외
-    service_vendors = ["운영 및 관리", "관제서비스", "취약점 점검", "교육", "개인정보", "컨설팅", "유지보수", "보안관제", "KPMG", "삼정", "딜로이트", "삼일", "안진"]
-    vendor_clean = vendor.strip()
-    prod_clean = prod_name.strip()
-    if any(sv in vendor_clean for sv in service_vendors) or any(sv in prod_clean for sv in service_vendors) or any(sv in vendor_clean for sv in ["유지관리", "관제서비스", "취약점점검"]):
-        return None, None
-
-    # 제조사명이 빈 값이거나 유효하지 않은 경우 제외
-    if not vendor or vendor.lower() in ["nan", "n/a", "없음", "미정"]:
-        return None, None
+    # [수정] 단순 용역/컨설팅/제조사명 공백 등의 조건은 인덱싱 시점에 차단하지 않고,
+    # RAG 검색 및 랭킹 정렬 단계에서 가장 후순위(최하위)로 밀려나도록 후처리 패널티 구조로 우회시킵니다.
+    # (단, 제조사명과 제품명 둘 다 유실된 무효 행은 RAG 용량 관리를 위해 계속 스킵)
 
     # Markdown 세그먼트 구성
     title = prod_name if prod_name else sol_type
@@ -285,6 +319,10 @@ class SecuritySolutionRAG:
                 # 하이브리드 점수 = 0.3 * 벡터유사도 + 0.7 * 키워드유사도
                 final_sim = (0.3 * chroma_sim) + (0.7 * keyword_sim)
 
+                # 패널티를 받은 애들은 최종 유사도 점수를 대폭 감산하여 자동 N/A 필터에 더 잘 걸리게 합니다.
+                penalty_applied = has_ranking_penalty(metadata)
+                if penalty_applied:
+                    final_sim = max(0.0, final_sim - 0.40)
 
                 matched.append({
                     "id": doc_id,
@@ -296,11 +334,13 @@ class SecuritySolutionRAG:
                     "솔루션구분": metadata.get("솔루션구분", ""),
                     "제조사명": metadata.get("제조사명", ""),
                     "제품명": metadata.get("제품명", ""),
-                    "제품명기능설명": metadata.get("제품명기능설명", "")
+                    "제품명기능설명": metadata.get("제품명기능설명", ""),
+                    "penalty": penalty_applied
                 })
 
         # 3단계: 하이브리드 최종 유사도 기준으로 내림차순 재정렬 (Re-ranking)
-        matched.sort(key=lambda x: x["similarity"], reverse=True)
+        # 패널티가 적용되지 않은(penalty=False) 녀석들을 0순위로 우선 배치하고, 동일 등급 내에서는 유사도 점수가 높은 것 순으로 배치합니다.
+        matched.sort(key=lambda x: (x["penalty"], -x["similarity"]))
         return matched[:top_k]
 
     def find_best_solution(self, item, similarity_threshold=0.25):
@@ -333,15 +373,24 @@ class SecuritySolutionRAG:
 
         best = results[0]
 
-        # 제조사명과 제품명이 비어있는 매칭은 건너뜀
-        if not best.get("제조사명") and not best.get("제품명"):
-            # 차선 결과 탐색
+        # 제조사명이 공백이거나 제품명이 공백이거나 패널티가 적용된 항목인 경우 차선책 탐색
+        def is_invalid_or_penalized(x):
+            v = str(x.get("제조사명", "")).strip()
+            p = str(x.get("제품명", "")).strip()
+            is_empty = (not v or v.lower() in ["", "nan", "n/a", "없음", "미정"]) or \
+                       (not p or p.lower() in ["", "nan", "n/a", "없음", "미정"])
+            return is_empty or x.get("penalty", False)
+
+        if is_invalid_or_penalized(best):
+            # 차선 결과 탐색 (패널티 없고 온전한 제품 우선)
             for alt in results[1:]:
-                if alt.get("제조사명") or alt.get("제품명"):
+                if not is_invalid_or_penalized(alt):
                     best = alt
                     break
             else:
-                return None, 0.0
+                # 차선책마저 모두 무효/패널티 대상이라면, 가장 점수가 높은 1순위 후보를 그대로 유지하되 
+                # (결국 임계치 검사에서 N/A 처리될 확률이 높음)
+                pass
 
         similarity = best.get("similarity", 0.0)
 
