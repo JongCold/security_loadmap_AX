@@ -20,7 +20,7 @@ sys.stdout.reconfigure(encoding='utf-8', line_buffering=True)
 # 경로 설정 - 프로젝트 디렉토리 기준 상대 경로 자동화
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SOLUTION_LIST_PATH = os.path.join(BASE_DIR, "자사 보안 솔루션 리스트 (1).xlsx")
-ROADMAP_TEMPLATE_PATH = os.path.join(BASE_DIR, "2026년 KG그룹_제로인 정보보안감사_보안솔루션로드맵_v1.2.xlsx")
+ROADMAP_TEMPLATE_PATH = os.path.join(BASE_DIR, "{올해}년 KG그룹_{기업명} 정보보안감사_보안솔루션로드맵_{생성일}.xlsx")
 
 # 로컬 Ollama 설정
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
