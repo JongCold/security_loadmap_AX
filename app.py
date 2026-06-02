@@ -3,6 +3,8 @@ import re
 import sys
 import datetime
 import io
+import uuid
+from threading import Thread
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 import openpyxl
@@ -231,9 +233,12 @@ def upload_asset_file():
         "filepath": filepath
     })
 
+# 비동기 분석 작업을 보관할 글로벌 메모리 딕셔너리
+MAP_TASKS = {}
+
 @app.route('/api/map', methods=['POST'])
 def map_solutions():
-    print("Received /api/map request!", flush=True)
+    print("Received asynchronous /api/map request!", flush=True)
     data = request.json
     items = data.get("items", [])
     model_name = data.get("model", "gemma2:2b")
@@ -241,75 +246,116 @@ def map_solutions():
     if not items:
         return jsonify({"status": "error", "message": "분석할 체크리스트 항목이 없습니다."}), 400
         
-    def process_item(item):
-        print(f"Processing row {item.get('row_idx')}: {item.get('항목명')}", flush=True)
-        try:
-            # 로컬 Ollama 호출 (sol_context=None으로 주면 아이템별 초경량 RAG 필터링 수행)
-            map_res = roadmap_agent_llm.call_local_gemma(item, None, model_name=model_name)
-            print(f"Ollama mapping result for row {item.get('row_idx')}: {map_res}", flush=True)
-            
-            # 연차 배분 스케줄링
-            year = roadmap_agent_llm.calculate_roadmap_year(map_res)
-            
-            return {
-                "row_idx": item["row_idx"],
-                "항목명": item["항목명"],
-                "세부점검내용": item["세부점검내용"],
-                "운영현황_증적": item["운영현황_증적"],
-                "개선방안": item["개선방안"],
-                "보안영역": map_res.get("보안영역", "기타 보안"),
-                "과제명": map_res.get("과제명", "보안 솔루션 구축"),
-                "법적요구": map_res.get("법적요구", "N/A"),
-                "시급성": map_res.get("시급성", 3),
-                "위험도": map_res.get("위험도", 3),
-                "예상예산": map_res.get("예상예산", "영업 문의가 필요한 영역 논의 필요."),
-                "로드맵연도": year,
-                "비고": map_res.get("비고", ""),
-                "추천솔루션": map_res.get("추천솔루션", "N/A"),
-                "제조사": map_res.get("제조사", "N/A")
-            }
-        except Exception as e:
-            print(f"아이템 처리 중 에러 발생: {e}", flush=True)
-            fallback_res = {
-                "보안영역": "미정",
-                "과제명": "솔루션 도입 검토 필요 (분석 실패)",
-                "법적요구": "N/A",
-                "시급성": 3,
-                "위험도": 3,
-                "예상예산": "영업 문의가 필요한 영역 논의 필요.",
-                "비고": f"[추천 솔루션] 분석 실패\n[선정 이유] LLM 호출 도중 예외가 발생했습니다: {str(e)}",
-                "추천솔루션": "N/A",
-                "제조사": "N/A"
-            }
-            year = roadmap_agent_llm.calculate_roadmap_year(fallback_res)
-            return {
-                "row_idx": item["row_idx"],
-                "항목명": item["항목명"],
-                "세부점검내용": item["세부점검내용"],
-                "운영현황_증적": item["운영현황_증적"],
-                "개선방안": item["개선방안"],
-                "보안영역": fallback_res["보안영역"],
-                "과제명": fallback_res["과제명"],
-                "법적요구": fallback_res["법적요구"],
-                "시급성": fallback_res["시급성"],
-                "위험도": fallback_res["위험도"],
-                "예상예산": fallback_res["예상예산"],
-                "로드맵연도": year,
-                "비고": fallback_res["비고"],
-                "추천솔루션": fallback_res["추천솔루션"],
-                "제조사": fallback_res["제조사"]
-            }
-
-    # ThreadPoolExecutor를 사용한 병렬 처리 (최대 4개 스레드로 동시 요청 처리)
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        mapped_results = list(executor.map(process_item, items))
+    # 새로운 고유 작업 ID 생성
+    task_id = str(uuid.uuid4())
+    MAP_TASKS[task_id] = {
+        "status": "processing",
+        "progress": 0,
+        "total": len(items),
+        "results": [],
+        "message": ""
+    }
     
-    print("Finished processing all items.", flush=True)
+    # 백그라운드 스레드에서 수행될 AI 매핑 처리 함수
+    def background_mapping(tid, target_items, model):
+        results = []
         
+        def process_item(item):
+            print(f"[배경 작업] Processing row {item.get('row_idx')}: {item.get('항목명')}", flush=True)
+            try:
+                # 로컬 Ollama 호출 (sol_context=None으로 주면 RAG 자동 필터링)
+                map_res = roadmap_agent_llm.call_local_gemma(item, None, model_name=model)
+                print(f"[배경 작업] Ollama mapping result for row {item.get('row_idx')}: {map_res}", flush=True)
+                
+                # 연차 배분 스케줄링
+                year = roadmap_agent_llm.calculate_roadmap_year(map_res)
+                
+                return {
+                    "row_idx": item["row_idx"],
+                    "항목명": item["항목명"],
+                    "세부점검내용": item["세부점검내용"],
+                    "운영현황_증적": item["운영현황_증적"],
+                    "개선방안": item["개선방안"],
+                    "보안영역": map_res.get("보안영역", "기타 보안"),
+                    "과제명": map_res.get("과제명", "보안 솔루션 구축"),
+                    "법적요구": map_res.get("법적요구", "N/A"),
+                    "시급성": map_res.get("시급성", 3),
+                    "위험도": map_res.get("위험도", 3),
+                    "예상예산": map_res.get("예상예산", "영업 문의가 필요한 영역 논의 필요."),
+                    "로드맵연도": year,
+                    "비고": map_res.get("비고", ""),
+                    "추천솔루션": map_res.get("추천솔루션", "N/A"),
+                    "제조사": map_res.get("제조사", "N/A")
+                }
+            except Exception as e:
+                print(f"[배경 작업] 아이템 처리 중 에러 발생: {e}", flush=True)
+                fallback_res = {
+                    "보안영역": "미정",
+                    "과제명": "솔루션 도입 검토 필요 (분석 실패)",
+                    "법적요구": "N/A",
+                    "시급성": 3,
+                    "위험도": 3,
+                    "예상예산": "영업 문의가 필요한 영역 논의 필요.",
+                    "비고": f"[추천 솔루션] 분석 실패\n[선정 이유] LLM 호출 도중 예외가 발생했습니다: {str(e)}",
+                    "추천솔루션": "N/A",
+                    "제조사": "N/A"
+                }
+                year = roadmap_agent_llm.calculate_roadmap_year(fallback_res)
+                return {
+                    "row_idx": item["row_idx"],
+                    "항목명": item["항목명"],
+                    "세부점검내용": item["세부점검내용"],
+                    "운영현황_증적": item["운영현황_증적"],
+                    "개선방안": item["개선방안"],
+                    "보안영역": fallback_res["보안영역"],
+                    "과제명": fallback_res["과제명"],
+                    "법적요구": fallback_res["법적요구"],
+                    "시급성": fallback_res["시급성"],
+                    "위험도": fallback_res["위험도"],
+                    "예상예산": fallback_res["예상예산"],
+                    "로드맵연도": year,
+                    "비고": fallback_res["비고"],
+                    "추천솔루션": fallback_res["추천솔루션"],
+                    "제조사": fallback_res["제조사"]
+                }
+
+        try:
+            # 4개의 워커 스레드로 병렬 연산 처리
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [executor.submit(process_item, item) for item in target_items]
+                completed_count = 0
+                for fut in futures:
+                    res = fut.result()
+                    results.append(res)
+                    completed_count += 1
+                    # 실시간 작업 진행 상황 업데이트
+                    MAP_TASKS[tid]["progress"] = completed_count
+                    MAP_TASKS[tid]["results"] = results
+            
+            MAP_TASKS[tid]["status"] = "success"
+            print(f"[배경 작업] ✅ Task {tid} AI 매핑 완료 (총 {completed_count}건)", flush=True)
+        except Exception as ex:
+            MAP_TASKS[tid]["status"] = "failed"
+            MAP_TASKS[tid]["message"] = str(ex)
+            print(f"[배경 작업] ❌ Task {tid} 에러 발생: {ex}", flush=True)
+
+    # 백그라운드 스레드 즉시 기동
+    t = Thread(target=background_mapping, args=(task_id, items, model_name))
+    t.daemon = True
+    t.start()
+
     return jsonify({
-        "status": "success",
-        "results": mapped_results
+        "status": "started",
+        "task_id": task_id
     })
+
+@app.route('/api/map/status/<task_id>', methods=['GET'])
+def get_map_status(task_id):
+    """비동기 분석 작업의 실시간 진행률 및 결과 확인 API"""
+    task = MAP_TASKS.get(task_id)
+    if not task:
+        return jsonify({"status": "error", "message": "해당 작업 ID를 찾을 수 없습니다."}), 404
+    return jsonify(task)
 
 @app.route('/api/export', methods=['POST'])
 def export_excel():

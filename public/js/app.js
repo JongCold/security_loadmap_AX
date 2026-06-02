@@ -419,16 +419,7 @@ function initializeUI() {
         }
 
         loadingOverlay.style.display = 'block';
-        progressBar.style.width = '10%';
-
-        let progress = 10;
-        const interval = setInterval(() => {
-            if (progress < 90) {
-                progress += Math.floor(Math.random() * 15) + 5;
-                if (progress > 90) progress = 90;
-                progressBar.style.width = `${progress}%`;
-            }
-        }, 1200);
+        progressBar.style.width = '0%';
 
         fetch(apiUrl('/api/map'), {
             method: 'POST',
@@ -442,33 +433,63 @@ function initializeUI() {
         })
         .then(res => res.json())
         .then(data => {
-            clearInterval(interval);
-            progressBar.style.width = '100%';
-            
-            setTimeout(() => {
+            if (data.status === 'started') {
+                const taskId = data.task_id;
+                
+                // 1.5초마다 진행 상태를 백엔드에 폴링하여 갱신
+                const pollInterval = setInterval(() => {
+                    fetch(apiUrl(`/api/map/status/${taskId}`))
+                    .then(r => r.json())
+                    .then(taskState => {
+                        if (taskState.status === 'processing') {
+                            const percent = Math.round((taskState.progress / taskState.total) * 100);
+                            progressBar.style.width = `${percent}%`;
+                            if (loadingText) {
+                                loadingText.innerHTML = `선택된 LLM 모델 <strong>[${selectedModel}]</strong> 분석 진행 중... (${taskState.progress} / ${taskState.total}건 완료)`;
+                            }
+                        } else if (taskState.status === 'success') {
+                            clearInterval(pollInterval);
+                            progressBar.style.width = '100%';
+                            
+                            setTimeout(() => {
+                                loadingOverlay.style.display = 'none';
+                                btnMapStart.disabled = false;
+                                btnMapStart.style.opacity = '1';
+                                btnMapStart.innerHTML = `<i class="fa-solid fa-microchip"></i> AI 매핑 및 스케줄링 기동`;
+
+                                mappedResults = taskState.results;
+                                renderResultTable(taskState.results);
+                                resultCard.style.display = 'block';
+                                resultCard.scrollIntoView({ behavior: 'smooth' });
+                            }, 500);
+                        } else if (taskState.status === 'failed') {
+                            clearInterval(pollInterval);
+                            loadingOverlay.style.display = 'none';
+                            btnMapStart.disabled = false;
+                            btnMapStart.style.opacity = '1';
+                            btnMapStart.innerHTML = `<i class="fa-solid fa-microchip"></i> AI 매핑 및 스케줄링 기동`;
+                            alert('매핑 처리 실패: ' + taskState.message);
+                        }
+                    })
+                    .catch(err => {
+                        console.warn('[폴링 경고] 진행도 조회 실패, 재시도합니다:', err.message);
+                    });
+                }, 1500);
+            } else {
                 loadingOverlay.style.display = 'none';
                 btnMapStart.disabled = false;
                 btnMapStart.style.opacity = '1';
                 btnMapStart.innerHTML = `<i class="fa-solid fa-microchip"></i> AI 매핑 및 스케줄링 기동`;
-
-                if (data.status === 'success') {
-                    mappedResults = data.results;
-                    renderResultTable(data.results);
-                    resultCard.style.display = 'block';
-                    resultCard.scrollIntoView({ behavior: 'smooth' });
-                } else {
-                    alert(data.message || '매핑 실행 오류');
-                }
-            }, 500);
+                alert(data.message || '매핑 시작 실패');
+            }
         })
         .catch(err => {
-            clearInterval(interval);
             loadingOverlay.style.display = 'none';
             btnMapStart.disabled = false;
             btnMapStart.style.opacity = '1';
             btnMapStart.innerHTML = `<i class="fa-solid fa-microchip"></i> AI 매핑 및 스케줄링 기동`;
             console.error(err);
-            alert('매핑 통신 실패');
+            alert('매핑 통신 시작 실패 (서버 연결 및 터널 유효성을 확인하세요)');
         });
     });
 
