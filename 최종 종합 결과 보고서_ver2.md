@@ -157,37 +157,42 @@ flowchart TB
 
 ### 4.2 시스템 아키텍처 다이어그램 (Architecture)
 
+### 4.2 시스템 아키텍처 다이어그램 (Architecture)
+
 ```mermaid
-architecture-beta
-    %% 서비스 레이어
-    group client_tier[클라이언트 레이어 (Vercel Frontend)]
-        service web_ui(internet, "컨설턴트 Dashboard UI")
-    
-    group api_tier[애플리케이션 레이어 (Backend)]
-        service api_gw(server, "Flask API Controller / Router")
-        service parse_engine(server, "openpyxl Style Cloner / Parser")
-        service scheduler_engine(server, "컴플라이언스 스케줄러")
-        
-    group ai_tier[AI 및 검색 레이어]
-        service orchestrator(server, "RAG Prompt Orchestrator")
-        service vector_db(database, "ChromaDB (Vector DB)")
-        service sllm(server, "Ollama Gemma 2 (Local LLM)")
+flowchart TB
+    subgraph client_tier ["클라이언트 레이어 (Vercel Frontend)"]
+        web_ui["컨설턴트 Dashboard UI"]
+    end
 
-    group storage_tier[데이터베이스 레이어 (Storage)]
-        service file_storage(disk, "uploads/ (임시 저장소)")
-        service template_file(disk, "로드맵 양식 / 자사 솔루션 Excel")
+    subgraph api_tier ["애플리케이션 레이어 (Backend)"]
+        api_gw["Flask API Controller / Router"]
+        parse_engine["openpyxl Style Cloner / Parser"]
+        scheduler_engine["컴플라이언스 스케줄러"]
+    end
 
-    %% 연결 관계
-    web_ui:R --> api_gw:L
-    api_gw:D --> parse_engine:U
-    api_gw:R --> orchestrator:L
-    orchestrator:U --> vector_db:D
-    orchestrator:D --> sllm:U
-    parse_engine:D --> file_storage:U
-    parse_engine:R --> template_file:L
-    scheduler_engine:U --> api_gw:D
-    orchestrator:R --> scheduler_engine:L
-    vector_db:L --> template_file:R
+    subgraph ai_tier ["AI 및 검색 레이어"]
+        orchestrator["RAG Prompt Orchestrator"]
+        vector_db["ChromaDB (Vector DB)"]
+        sllm["Ollama Gemma 2 (Local LLM)"]
+    end
+
+    subgraph storage_tier ["데이터베이스 레이어 (Storage)"]
+        file_storage["uploads/ (임시 저장소)"]
+        template_file["로드맵 양식 / 자사 솔루션 Excel"]
+    end
+
+    %% 연결 관계 구성
+    web_ui --> api_gw
+    api_gw --> parse_engine
+    api_gw --> orchestrator
+    orchestrator --> vector_db
+    orchestrator --> sllm
+    parse_engine --> file_storage
+    parse_engine --> template_file
+    scheduler_engine --> api_gw
+    orchestrator --> scheduler_engine
+    vector_db --> template_file
 ```
 
 ---
