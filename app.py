@@ -57,25 +57,24 @@ def get_company_name_from_file(original_filename, filepath):
     """체크리스트 파일명 또는 내부 셀 데이터에서 기업명 추출"""
     # 1. 원본 파일명에서 '년도 기업명_내부보안...' 패턴 추출
     # {년도} {기업명}_내부보안점검_상세체크리스트_{버전}_{작성일시}
-    # 예: '2026년 KG제로인_내부보안점검...'
     match = re.search(r'년\s*([A-Za-z0-9가-힣\s]+?)(?:_|\s|내부보안)', original_filename)
     if match:
         name = match.group(1).strip()
         if name:
             return name
     
-    # 2. 첫 번째 시트(표지)에서 KG ICT 로고 이외에 KG xxx 으로 되어 있는 고객사명 검색
+    # 2. 첫 번째 시트(표지)에서
     try:
         wb = openpyxl.load_workbook(filepath, data_only=True)
         sheet = wb.worksheets[0]
         for row in sheet.iter_rows(values_only=True):
             for cell in row:
                 if cell and isinstance(cell, str):
-                    # KG로 시작하는 한국어/영어/숫자 단어 탐색 (예: KG제로인, KG케미칼 등)
+                    # KG로 시작하는 한국어/영어/숫자 단어 탐색 
                     found_names = re.findall(r'KG[가-힣A-Za-z0-9]+', cell)
                     for val in found_names:
                         val_clean = val.strip()
-                        if val_clean != "KGICT" and "ICT" not in val_clean:
+                        if val_clean != "KG" and "ICT" not in val_clean:
                             return val_clean
                             
         # 백업: 시트 이름 중 표지 관련 시트의 상단 영역 직접 스캔
